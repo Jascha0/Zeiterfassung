@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1f6feb" />
+    <meta name="description" content="Zeiterfassung – Arbeitszeit erfassen" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <title>Zeiterfassung</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var t = 'system';
+        try { var s = localStorage.getItem('zeiterfassung.theme'); if (s === 'light' || s === 'dark' || s === 'system') t = s; } catch (e) {}
+        var dark = t === 'dark' || (t === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

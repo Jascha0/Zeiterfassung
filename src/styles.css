@@ -1,0 +1,356 @@
+:root,
+[data-theme='light'] {
+  --color-bg: #f6f8fa;
+  --color-surface: #ffffff;
+  --color-text: #1f2328;
+  --color-text-muted: #57606a;
+  --color-border: #d0d7de;
+  --color-primary: #0b5cd5;
+  --color-primary-hover: #0a4fb6;
+  --color-on-primary: #ffffff;
+  --color-danger-bg: #ffebe9;
+  --color-danger-text: #82071e;
+  --color-warning-bg: #fff8c5;
+  --color-warning-text: #4d2d00;
+  --color-success-text: #116329;
+  --color-focus: #0b5cd5;
+  --color-toast-bg: #1f2328;
+  --color-toast-text: #ffffff;
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-text: #e6edf3;
+  --color-text-muted: #9da7b3;
+  --color-border: #30363d;
+  --color-primary: #4493f8;
+  --color-primary-hover: #6aa8fa;
+  --color-on-primary: #0d1117;
+  --color-danger-bg: #3c1618;
+  --color-danger-text: #ffb3ad;
+  --color-warning-bg: #3b2e00;
+  --color-warning-text: #f2d67a;
+  --color-success-text: #7ee2a0;
+  --color-focus: #79b8ff;
+  --color-toast-bg: #e6edf3;
+  --color-toast-text: #0d1117;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+  margin: 0 0 0.75rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+h2 {
+  font-size: 1.25rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+}
+
+p {
+  margin: 0 0 0.75rem;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  min-height: 2.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.button-primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+  font-weight: 600;
+}
+
+.button-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.button-secondary {
+  font-weight: 600;
+}
+
+.button-google {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.button-link {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  text-decoration: underline;
+  padding: 0.25rem 0.5rem;
+  min-height: 2.25rem;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+input[type='email'],
+input[type='password'] {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+[role='alert'] {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.card [role='status'] {
+  color: var(--color-success-text);
+}
+
+.loading {
+  padding: 2rem;
+  text-align: center;
+}
+
+.page {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.page.narrow {
+  max-width: 28rem;
+  padding-top: 2rem;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.mode-switch {
+  margin-top: 0.75rem;
+  justify-content: space-between;
+}
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.main-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.main-nav button[aria-current='page'] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.online-indicator {
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-success-text);
+}
+
+.online-indicator[data-online='false'] {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.banner {
+  max-width: 44rem;
+  margin: 1rem auto 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.banner [role='status'] {
+  margin: 0.5rem 0 0;
+}
+
+.timer-status {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.totals dt,
+.account-info dt {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.totals dd {
+  margin: 0;
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.account-info dd {
+  margin: 0 0 0.5rem;
+}
+
+.timer-actions {
+  margin-bottom: 0.75rem;
+}
+
+.timer-actions button {
+  min-width: 8rem;
+}
+
+.entry-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.method {
+  margin-bottom: 0.75rem;
+}
+
+.theme-options {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.theme-options legend {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2.75rem;
+}
+
+.toast-region {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(28rem, calc(100% - 2rem));
+  z-index: 10;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-toast-bg);
+  color: var(--color-toast-text);
+}
+
+.toast .button-link {
+  color: inherit;
+}

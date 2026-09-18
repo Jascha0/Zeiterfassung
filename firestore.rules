@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    function isValidEntry(d) {
+      return d.keys().hasAll(['type', 'start', 'end', 'createdAt', 'updatedAt'])
+        && d.keys().hasOnly(['type', 'start', 'end', 'projectId', 'note', 'createdAt', 'updatedAt'])
+        && d.type in ['work', 'break']
+        && d.start is timestamp
+        && (d.end == null || (d.end is timestamp && d.end >= d.start))
+        && d.createdAt is timestamp
+        && d.updatedAt is timestamp
+        && (!('projectId' in d) || d.projectId is string)
+        && (!('note' in d) || (d.note is string && d.note.size() <= 2000));
+    }
+    match /users/{uid}/entries/{entryId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && isValidEntry(request.resource.data);
+    }
+    match /users/{uid}/settings/preferences {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['theme'])
+        && request.resource.data.theme in ['light', 'dark', 'system'];
+    }
+  }
+}
