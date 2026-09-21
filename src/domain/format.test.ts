@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatClock, formatDuration } from './format';
+import { formatClock, formatDuration, formatEntryLabel, formatHoursMinutes } from './format';
 
 describe('formatDuration', () => {
   it('formats 0 as 0:00:00', () => {
@@ -45,5 +45,15 @@ describe('formatClock', () => {
   it('formats afternoon/evening hours in 24h notation', () => {
     const instant = new Date(2026, 5, 15, 23, 59).getTime();
     expect(formatClock(instant)).toBe('23:59');
+  });
+});
+
+describe('formatHoursMinutes / formatEntryLabel', () => {
+  it('formats a duration as "7 Std. 30 Min." and an entry as "Arbeit 09:00–12:00"', () => {
+    expect(formatHoursMinutes(7.5 * 60 * 60 * 1000)).toBe('7 Std. 30 Min.');
+    const start = new Date(2026, 8, 18, 9, 0).getTime();
+    const end = new Date(2026, 8, 18, 12, 0).getTime();
+    expect(formatEntryLabel({ type: 'work', start, end })).toBe('Arbeit 09:00–12:00');
+    expect(formatEntryLabel({ type: 'work', start, end: null })).toBe('Arbeit 09:00–läuft');
   });
 });
