@@ -1,13 +1,13 @@
 import type { Unsubscribe } from '../auth/authTypes';
 import type { TransitionPlan } from '../domain/timer';
 import type { Entry, TimeRange } from '../domain/types';
-import type { EntryRepository, Preferences, SettingsRepository } from './repository';
+import type { EntryRepository, Preferences, SettingsRepository, SubscriptionMeta } from './repository';
 
 interface EntrySubscription {
   kind: 'entries';
   uid: string;
   select: (entries: Entry[]) => Entry[];
-  onChange: (entries: Entry[]) => void;
+  onChange: (entries: Entry[], meta: SubscriptionMeta) => void;
 }
 
 interface PreferencesSubscription {
@@ -36,6 +36,7 @@ export class InMemoryRepository implements EntryRepository, SettingsRepository {
   private nextId = 1;
   private nextWriteError: Error | null = null;
   private offline = false;
+  private fromCacheOverride: boolean | null = null;
 
   seedEntries(uid: string, entries: Entry[]): void {
     this.entries.set(uid, new Map(entries.map((entry) => [entry.id, { ...entry }])));
@@ -57,9 +58,15 @@ export class InMemoryRepository implements EntryRepository, SettingsRepository {
 
   setOffline(offline: boolean): void {
     this.offline = offline;
+    this.notifyAllEntries();
     if (offline) return;
     const pending = this.pendingWrites.splice(0);
     for (const settle of pending) settle();
+  }
+
+  setFromCacheOverride(fromCache: boolean | null): void {
+    this.fromCacheOverride = fromCache;
+    this.notifyAllEntries();
   }
 
   listenerCount(): number {
@@ -69,7 +76,7 @@ export class InMemoryRepository implements EntryRepository, SettingsRepository {
   subscribeEntriesInRange(
     uid: string,
     range: TimeRange,
-    onChange: (entries: Entry[]) => void,
+    onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
     _onError: (error: Error) => void,
   ): Unsubscribe {
     return this.subscribe({
@@ -80,7 +87,11 @@ export class InMemoryRepository implements EntryRepository, SettingsRepository {
     });
   }
 
-  subscribeOpenEntries(uid: string, onChange: (entries: Entry[]) => void, _onError: (error: Error) => void): Unsubscribe {
+  subscribeOpenEntries(
+    uid: string,
+    onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
+    _onError: (error: Error) => void,
+  ): Unsubscribe {
     return this.subscribe({
       kind: 'entries',
       uid,
@@ -164,9 +175,16 @@ export class InMemoryRepository implements EntryRepository, SettingsRepository {
     };
   }
 
+  private currentMeta(): SubscriptionMeta {
+    return {
+      fromCache: this.fromCacheOverride ?? this.offline,
+      hasPendingWrites: this.pendingWrites.length > 0,
+    };
+  }
+
   private deliver(subscription: Subscription): void {
     if (subscription.kind === 'entries') {
-      subscription.onChange(subscription.select(this.getEntries(subscription.uid)));
+      subscription.onChange(subscription.select(this.getEntries(subscription.uid)), this.currentMeta());
     } else {
       const prefs = this.preferences.get(subscription.uid) ?? null;
       subscription.onChange(prefs === null ? null : { ...prefs });
@@ -176,6 +194,14 @@ export class InMemoryRepository implements EntryRepository, SettingsRepository {
   private notifyEntries(uid: string): void {
     for (const subscription of [...this.subscriptions]) {
       if (subscription.kind === 'entries' && subscription.uid === uid && this.subscriptions.has(subscription)) {
+        this.deliver(subscription);
+      }
+    }
+  }
+
+  private notifyAllEntries(): void {
+    for (const subscription of [...this.subscriptions]) {
+      if (subscription.kind === 'entries' && this.subscriptions.has(subscription)) {
         this.deliver(subscription);
       }
     }

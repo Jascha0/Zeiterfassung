@@ -16,7 +16,7 @@ import type { Unsubscribe } from '../auth/authTypes';
 import type { TransitionPlan } from '../domain/timer';
 import type { Entry, TimeRange } from '../domain/types';
 import { parseEntry, parsePreferences } from './entryMapping';
-import type { EntryRepository, Preferences, SettingsRepository } from './repository';
+import type { EntryRepository, Preferences, SettingsRepository, SubscriptionMeta } from './repository';
 
 function toEntries(snapshot: QuerySnapshot): Entry[] {
   const entries: Entry[] = [];
@@ -41,7 +41,7 @@ export class FirestoreRepository implements EntryRepository, SettingsRepository 
   subscribeEntriesInRange(
     uid: string,
     range: TimeRange,
-    onChange: (entries: Entry[]) => void,
+    onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
     onError: (error: Error) => void,
   ): Unsubscribe {
     const rangeQuery = query(
@@ -53,9 +53,17 @@ export class FirestoreRepository implements EntryRepository, SettingsRepository 
     return this.subscribeQuery(rangeQuery, onChange, onError);
   }
 
-  subscribeOpenEntries(uid: string, onChange: (entries: Entry[]) => void, onError: (error: Error) => void): Unsubscribe {
+  subscribeOpenEntries(
+    uid: string,
+    onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
+    onError: (error: Error) => void,
+  ): Unsubscribe {
     const openQuery = query(this.entriesCollection(uid), where('end', '==', null));
-    return this.subscribeQuery(openQuery, (entries) => onChange(entries.sort((a, b) => a.start - b.start)), onError);
+    return this.subscribeQuery(
+      openQuery,
+      (entries, meta) => onChange(entries.sort((a, b) => a.start - b.start), meta),
+      onError,
+    );
   }
 
   applyTransition(uid: string, plan: TransitionPlan): Promise<void> {
@@ -107,9 +115,18 @@ export class FirestoreRepository implements EntryRepository, SettingsRepository 
 
   private subscribeQuery(
     target: Query,
-    onChange: (entries: Entry[]) => void,
+    onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
     onError: (error: Error) => void,
   ): Unsubscribe {
-    return onSnapshot(target, (snapshot) => onChange(toEntries(snapshot)), onError);
+    return onSnapshot(
+      target,
+      { includeMetadataChanges: true },
+      (snapshot) =>
+        onChange(toEntries(snapshot), {
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        }),
+      onError,
+    );
   }
 }

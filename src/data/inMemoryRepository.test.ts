@@ -289,3 +289,22 @@ describe('InMemoryRepository: savePreferences', () => {
     expect(onChange).toHaveBeenCalledWith({ theme: 'light' });
   });
 });
+
+describe('InMemoryRepository: subscription metadata (0027)', () => {
+  it('reports fromCache false by default, true while offline, and honours the override', async () => {
+    const repo = new InMemoryRepository();
+    const onChange = vi.fn();
+    repo.subscribeOpenEntries('u1', onChange, vi.fn());
+    await flushMicrotasks();
+    expect(onChange.mock.calls[0][1]).toEqual({ fromCache: false, hasPendingWrites: false });
+
+    repo.setOffline(true);
+    repo.seedEntries('u1', []);
+    expect(onChange.mock.calls.at(-1)?.[1]).toEqual({ fromCache: true, hasPendingWrites: false });
+
+    repo.setOffline(false);
+    repo.setFromCacheOverride(true);
+    repo.seedEntries('u1', []);
+    expect(onChange.mock.calls.at(-1)?.[1]).toEqual({ fromCache: true, hasPendingWrites: false });
+  });
+});

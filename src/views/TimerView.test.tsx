@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import { InMemoryRepository } from '../data/inMemoryRepository';
+import type { SubscriptionMeta } from '../data/repository';
 import { FakeAuthService } from '../test/fakeAuthService';
 import type { Entry, TimeRange } from '../domain/types';
 import type { TransitionPlan } from '../domain/timer';
@@ -170,7 +171,7 @@ describe('TimerView: subscription error (edge case 23)', () => {
       override subscribeEntriesInRange(
         _uid: string,
         _range: TimeRange,
-        _onChange: (entries: Entry[]) => void,
+        _onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
         onError: (error: Error) => void,
       ): Unsubscribe {
         queueMicrotask(() => onError(new Error('boom')));
@@ -178,7 +179,7 @@ describe('TimerView: subscription error (edge case 23)', () => {
       }
       override subscribeOpenEntries(
         _uid: string,
-        _onChange: (entries: Entry[]) => void,
+        _onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
         onError: (error: Error) => void,
       ): Unsubscribe {
         queueMicrotask(() => onError(new Error('boom')));
