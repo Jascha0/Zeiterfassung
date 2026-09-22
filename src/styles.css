@@ -481,3 +481,20 @@ select {
 .field-error {
   color: var(--color-danger-text);
 }
+
+.entry-marker {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.day-detail-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: 0.75rem;
+}
