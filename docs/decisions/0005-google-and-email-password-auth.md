@@ -1,6 +1,6 @@
 # 0005 — Sign-in offers both Google and email/password
 
-- **Status:** accepted
+- **Status:** superseded by [0032](0032-no-authentication-no-accounts.md)
 - **Date:** 2026-09-16
 - **Decided by:** user
 - **Slice:** slice 1 (foundation, auth, timer)

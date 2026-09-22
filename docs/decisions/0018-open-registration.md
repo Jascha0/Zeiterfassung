@@ -1,6 +1,6 @@
 # 0018 — Registration is open to anyone; isolation comes from per-uid security rules
 
-- **Status:** accepted
+- **Status:** superseded by [0032](0032-no-authentication-no-accounts.md)
 - **Date:** 2026-09-16
 - **Decided by:** architect
 - **Slice:** slice 1 (foundation, auth, timer)

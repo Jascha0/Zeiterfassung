@@ -1,6 +1,6 @@
 # 0014 — Slice order: foundation/auth/sync/timer → calendar + editing → projects/notes → export
 
-- **Status:** accepted
+- **Status:** superseded by [0039](0039-slice-order-local-rebuild-then-backup.md)
 - **Date:** 2026-09-16
 - **Decided by:** user
 - **Slice:** slice 1 (foundation, auth, timer)

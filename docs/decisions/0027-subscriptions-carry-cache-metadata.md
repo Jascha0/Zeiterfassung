@@ -1,6 +1,6 @@
 # 0027 — Entry subscriptions carry Firestore cache metadata, and a month is labelled "possibly incomplete" when it is cache-only while offline
 
-- **Status:** accepted
+- **Status:** superseded by [0036](0036-subscriptions-without-cache-metadata.md)
 - **Date:** 2026-09-18
 - **Decided by:** architect
 - **Slice:** slice 2 (calendar + editing)

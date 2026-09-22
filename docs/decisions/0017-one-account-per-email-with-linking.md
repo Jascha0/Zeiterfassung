@@ -1,6 +1,6 @@
 # 0017 — One account per email address; the second sign-in method is linked in-app, never auto-linked silently
 
-- **Status:** accepted
+- **Status:** superseded by [0032](0032-no-authentication-no-accounts.md)
 - **Date:** 2026-09-16
 - **Decided by:** architect
 - **Slice:** slice 1 (foundation, auth, timer)

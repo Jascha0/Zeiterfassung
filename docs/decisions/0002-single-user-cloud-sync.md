@@ -1,6 +1,6 @@
 # 0002 — One personal account per user, with cloud sync between that user's devices
 
-- **Status:** accepted
+- **Status:** superseded by [0030](0030-local-only-single-device-no-sync.md)
 - **Date:** 2026-09-16
 - **Decided by:** user
 - **Slice:** slice 1 (foundation, auth, timer)

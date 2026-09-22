@@ -1,6 +1,6 @@
 # 0022 — Several open entries are resolved manually, one by one; the app never closes or deletes them automatically
 
-- **Status:** accepted
+- **Status:** superseded by [0040](0040-open-entries-resolved-in-the-day-detail.md)
 - **Date:** 2026-09-18
 - **Decided by:** user
 - **Slice:** slice 2 (calendar + editing)

@@ -1,6 +1,6 @@
 # 0004 — Backend is Firebase (Firestore in the EU + Auth + Hosting) on the free Spark plan
 
-- **Status:** accepted
+- **Status:** superseded by [0031](0031-no-backend-firebase-dropped.md)
 - **Date:** 2026-09-16
 - **Decided by:** user
 - **Slice:** slice 1 (foundation, auth, timer)
