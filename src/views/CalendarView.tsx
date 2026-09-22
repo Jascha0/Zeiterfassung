@@ -1,8 +1,9 @@
-import { addMonths, subMonths } from 'date-fns';
+import { addDays, addMonths, endOfMonth, startOfDay, subMonths } from 'date-fns';
+import { useEffect, useRef, useState } from 'react';
 import { buildCalendarWeeks } from '../domain/calendarGrid';
 import { formatDuration, formatMonthTitle } from '../domain/format';
 import { buildMonthSummary, formatDayCellLabel, type MonthDay } from '../domain/monthView';
-import { monthStartFromKey, toDateKey, toMonthKey } from '../domain/routing';
+import { dayStartFromKey, monthStartFromKey, toDateKey, toMonthKey } from '../domain/routing';
 import { useMonthEntries } from '../hooks/useMonthEntries';
 import { useNow } from '../hooks/useNow';
 
@@ -22,6 +23,10 @@ const WEEKDAYS: ReadonlyArray<{ short: string; long: string }> = [
   { short: 'Sa', long: 'Samstag' },
   { short: 'So', long: 'Sonntag' },
 ];
+
+function defaultFocusDateKey(monthStart: number, now: number): string {
+  return toMonthKey(now) === toMonthKey(monthStart) ? toDateKey(now) : toDateKey(monthStart);
+}
 
 function dayMarkerDots(day: MonthDay): React.JSX.Element {
   return (
@@ -45,6 +50,70 @@ export function CalendarView(props: CalendarViewProps): React.JSX.Element {
   const weeks = buildCalendarWeeks(monthStart);
   const byDateKey = new Map(summary.days.map((day) => [day.dateKey, day]));
   const todayKey = toDateKey(now);
+  const lastDayStart = startOfDay(endOfMonth(monthStart)).getTime();
+
+  const [focusedDateKey, setFocusedDateKey] = useState(() => defaultFocusDateKey(monthStart, Date.now()));
+  const shouldFocus = useRef(false);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setFocusedDateKey(defaultFocusDateKey(monthStart, Date.now()));
+  }, [props.monthKey, monthStart]);
+
+  useEffect(() => {
+    if (!shouldFocus.current) return;
+    shouldFocus.current = false;
+    gridRef.current?.querySelector<HTMLButtonElement>(`[data-date="${focusedDateKey}"]`)?.focus();
+  }, [focusedDateKey]);
+
+  function moveFocusTo(event: React.KeyboardEvent<HTMLDivElement>, instant: number): void {
+    event.preventDefault();
+    shouldFocus.current = true;
+    setFocusedDateKey(toDateKey(Math.min(Math.max(instant, monthStart), lastDayStart)));
+  }
+
+  function selectMonth(event: React.KeyboardEvent<HTMLDivElement>, monthKey: string): void {
+    event.preventDefault();
+    shouldFocus.current = true;
+    props.onSelectMonth(monthKey);
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
+    const focusedDayStart = dayStartFromKey(focusedDateKey);
+    switch (event.key) {
+      case 'ArrowLeft':
+        moveFocusTo(event, addDays(focusedDayStart, -1).getTime());
+        return;
+      case 'ArrowRight':
+        moveFocusTo(event, addDays(focusedDayStart, 1).getTime());
+        return;
+      case 'ArrowUp':
+        moveFocusTo(event, addDays(focusedDayStart, -7).getTime());
+        return;
+      case 'ArrowDown':
+        moveFocusTo(event, addDays(focusedDayStart, 7).getTime());
+        return;
+      case 'Home':
+        moveFocusTo(event, monthStart);
+        return;
+      case 'End':
+        moveFocusTo(event, lastDayStart);
+        return;
+      case 'PageUp':
+        selectMonth(event, toMonthKey(subMonths(monthStart, 1).getTime()));
+        return;
+      case 'PageDown':
+        selectMonth(event, toMonthKey(addMonths(monthStart, 1).getTime()));
+        return;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        props.onOpenDay(focusedDateKey);
+        return;
+      default:
+        return;
+    }
+  }
 
   return (
     <main className="page">
@@ -74,7 +143,13 @@ export function CalendarView(props: CalendarViewProps): React.JSX.Element {
                 Offline – Daten möglicherweise unvollständig
               </p>
             )}
-            <div role="grid" aria-label="Monatskalender" className="calendar-grid">
+            <div
+              role="grid"
+              aria-label="Monatskalender"
+              className="calendar-grid"
+              ref={gridRef}
+              onKeyDown={handleKeyDown}
+            >
               <div role="row">
                 {WEEKDAYS.map((weekday) => (
                   <div key={weekday.long} role="columnheader" aria-label={weekday.long}>
@@ -103,7 +178,8 @@ export function CalendarView(props: CalendarViewProps): React.JSX.Element {
                         <button
                           type="button"
                           data-date={cell.dateKey}
-                          tabIndex={-1}
+                          tabIndex={cell.dateKey === focusedDateKey ? 0 : -1}
+                          onFocus={() => setFocusedDateKey(cell.dateKey)}
                           aria-label={formatDayCellLabel(day)}
                           aria-current={isToday ? 'date' : undefined}
                           onClick={() => props.onOpenDay(cell.dateKey)}
