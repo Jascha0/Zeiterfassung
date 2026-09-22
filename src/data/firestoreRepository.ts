@@ -1,11 +1,13 @@
 import {
   Timestamp,
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
   query,
   setDoc,
+  updateDoc,
   where,
   writeBatch,
   type Firestore,
@@ -14,9 +16,9 @@ import {
 } from 'firebase/firestore';
 import type { Unsubscribe } from '../auth/authTypes';
 import type { TransitionPlan } from '../domain/timer';
-import type { Entry, TimeRange } from '../domain/types';
+import type { Entry, NewEntry, TimeRange } from '../domain/types';
 import { parseEntry, parsePreferences } from './entryMapping';
-import type { EntryRepository, Preferences, SettingsRepository, SubscriptionMeta } from './repository';
+import type { EntryPatch, EntryRepository, Preferences, SettingsRepository, SubscriptionMeta } from './repository';
 
 function toEntries(snapshot: QuerySnapshot): Entry[] {
   const entries: Entry[] = [];
@@ -67,7 +69,7 @@ export class FirestoreRepository implements EntryRepository, SettingsRepository 
   }
 
   applyTransition(uid: string, plan: TransitionPlan): Promise<void> {
-    if (plan.close.length === 0 && plan.create === null) return Promise.resolve();
+    if (plan.close.length === 0 && plan.create === null && plan.delete.length === 0) return Promise.resolve();
     const entries = this.entriesCollection(uid);
     const batch = writeBatch(this.db);
     for (const close of plan.close) {
@@ -81,12 +83,35 @@ export class FirestoreRepository implements EntryRepository, SettingsRepository 
       batch.set(doc(entries), {
         type: create.type,
         start: Timestamp.fromMillis(create.start),
-        end: null,
+        end: create.end === null ? null : Timestamp.fromMillis(create.end),
         createdAt: Timestamp.fromMillis(create.createdAt),
         updatedAt: Timestamp.fromMillis(create.updatedAt),
       });
     }
+    for (const id of plan.delete) batch.delete(doc(entries, id));
     return batch.commit();
+  }
+
+  createEntry(uid: string, entry: NewEntry): Promise<void> {
+    return setDoc(doc(this.entriesCollection(uid)), {
+      type: entry.type,
+      start: Timestamp.fromMillis(entry.start),
+      end: entry.end === null ? null : Timestamp.fromMillis(entry.end),
+      createdAt: Timestamp.fromMillis(entry.createdAt),
+      updatedAt: Timestamp.fromMillis(entry.updatedAt),
+    });
+  }
+
+  updateEntry(uid: string, id: string, patch: EntryPatch): Promise<void> {
+    const payload: Record<string, unknown> = { updatedAt: Timestamp.fromMillis(patch.updatedAt) };
+    if (patch.type !== undefined) payload.type = patch.type;
+    if (patch.start !== undefined) payload.start = Timestamp.fromMillis(patch.start);
+    if (patch.end !== undefined) payload.end = patch.end === null ? null : Timestamp.fromMillis(patch.end);
+    return updateDoc(doc(this.entriesCollection(uid), id), payload);
+  }
+
+  deleteEntry(uid: string, id: string): Promise<void> {
+    return deleteDoc(doc(this.entriesCollection(uid), id));
   }
 
   subscribePreferences(

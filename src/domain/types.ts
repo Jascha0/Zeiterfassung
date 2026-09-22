@@ -14,7 +14,7 @@ export interface Entry {
 export interface NewEntry {
   type: EntryType;
   start: number;
-  end: null;
+  end: number | null;
   createdAt: number;
   updatedAt: number;
 }

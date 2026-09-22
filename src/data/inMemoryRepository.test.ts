@@ -123,9 +123,9 @@ describe('InMemoryRepository: subscriptions', () => {
 describe('InMemoryRepository: applyTransition', () => {
   it('creates entries with ids mem-1, mem-2, ... per instance', async () => {
     const repo = new InMemoryRepository();
-    const plan1: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 } };
+    const plan1: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 }, delete: [] };
     await repo.applyTransition('u1', plan1);
-    const plan2: TransitionPlan = { close: [], create: { type: 'work', start: 200, end: null, createdAt: 200, updatedAt: 200 } };
+    const plan2: TransitionPlan = { close: [], create: { type: 'work', start: 200, end: null, createdAt: 200, updatedAt: 200 }, delete: [] };
     await repo.applyTransition('u1', plan2);
     expect(repo.getEntries('u1').map((e) => e.id)).toEqual(['mem-1', 'mem-2']);
   });
@@ -142,6 +142,7 @@ describe('InMemoryRepository: applyTransition', () => {
     const plan: TransitionPlan = {
       close: [{ id: 'w1', end: 2000, updatedAt: 2000 }],
       create: { type: 'break', start: 2000, end: null, createdAt: 2000, updatedAt: 2000 },
+      delete: [],
     };
     const promise = repo.applyTransition('u1', plan);
     // Synchronous notification, before the promise settles.
@@ -154,7 +155,7 @@ describe('InMemoryRepository: applyTransition', () => {
 
   it('resolves once the write settles (online, default)', async () => {
     const repo = new InMemoryRepository();
-    const plan: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 } };
+    const plan: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 }, delete: [] };
     await expect(repo.applyTransition('u1', plan)).resolves.toBeUndefined();
   });
 
@@ -164,6 +165,7 @@ describe('InMemoryRepository: applyTransition', () => {
     const plan: TransitionPlan = {
       close: [{ id: 'does-not-exist', end: 200, updatedAt: 200 }],
       create: { type: 'break', start: 200, end: null, createdAt: 200, updatedAt: 200 },
+      delete: [],
     };
     await expect(repo.applyTransition('u1', plan)).rejects.toMatchObject({ code: 'not-found' });
     // Nothing applied: original entry untouched, nothing created.
@@ -172,7 +174,7 @@ describe('InMemoryRepository: applyTransition', () => {
 
   it('empty plan resolves without creating or closing anything', async () => {
     const repo = new InMemoryRepository();
-    await expect(repo.applyTransition('u1', { close: [], create: null })).resolves.toBeUndefined();
+    await expect(repo.applyTransition('u1', { close: [], create: null, delete: [] })).resolves.toBeUndefined();
     expect(repo.getEntries('u1')).toEqual([]);
   });
 });
@@ -191,6 +193,7 @@ describe('InMemoryRepository: failNextWrite', () => {
     const plan: TransitionPlan = {
       close: [{ id: 'w1', end: 2000, updatedAt: 2000 }],
       create: { type: 'break', start: 2000, end: null, createdAt: 2000, updatedAt: 2000 },
+      delete: [],
     };
     await expect(repo.applyTransition('u1', plan)).rejects.toBe(error);
 
@@ -205,10 +208,10 @@ describe('InMemoryRepository: failNextWrite', () => {
     const repo = new InMemoryRepository();
     const error = new Error('once');
     repo.failNextWrite(error);
-    const plan1: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 } };
+    const plan1: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 }, delete: [] };
     await expect(repo.applyTransition('u1', plan1)).rejects.toBe(error);
 
-    const plan2: TransitionPlan = { close: [], create: { type: 'work', start: 200, end: null, createdAt: 200, updatedAt: 200 } };
+    const plan2: TransitionPlan = { close: [], create: { type: 'work', start: 200, end: null, createdAt: 200, updatedAt: 200 }, delete: [] };
     await expect(repo.applyTransition('u1', plan2)).resolves.toBeUndefined();
   });
 });
@@ -222,7 +225,7 @@ describe('InMemoryRepository: setOffline', () => {
     await flushMicrotasks();
     onChange.mockClear();
 
-    const plan: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 } };
+    const plan: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 }, delete: [] };
     const promise = repo.applyTransition('u1', plan);
     expect(onChange).toHaveBeenCalledTimes(1); // local update happened
     expect(onChange.mock.calls[0][0]).toHaveLength(1);
@@ -243,7 +246,7 @@ describe('InMemoryRepository: setOffline', () => {
     repo.setOffline(true);
     const error = new Error('offline-fail');
     repo.failNextWrite(error);
-    const plan: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 } };
+    const plan: TransitionPlan = { close: [], create: { type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 }, delete: [] };
     const promise = repo.applyTransition('u1', plan);
     expect(repo.getEntries('u1')).toHaveLength(1); // optimistic local apply
 
@@ -306,5 +309,32 @@ describe('InMemoryRepository: subscription metadata (0027)', () => {
     repo.setFromCacheOverride(true);
     repo.seedEntries('u1', []);
     expect(onChange.mock.calls.at(-1)?.[1]).toEqual({ fromCache: true, hasPendingWrites: false });
+  });
+});
+
+describe('InMemoryRepository: atomic close + delete (0028)', () => {
+  it('applies close and delete in one batch and rolls both back when the write fails', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [
+      entry({ id: 'a', type: 'work', start: 1000 }),
+      entry({ id: 'b', type: 'work', start: 2000 }),
+    ]);
+    const plan: TransitionPlan = {
+      close: [{ id: 'a', end: 5000, updatedAt: 5000 }],
+      create: null,
+      delete: ['b'],
+    };
+    const error = Object.assign(new Error('denied'), { code: 'permission-denied' });
+    repo.failNextWrite(error);
+    await expect(repo.applyTransition('u1', plan)).rejects.toBe(error);
+    expect(repo.getEntries('u1')).toEqual([
+      entry({ id: 'a', type: 'work', start: 1000 }),
+      entry({ id: 'b', type: 'work', start: 2000 }),
+    ]);
+
+    await repo.applyTransition('u1', plan);
+    const after = repo.getEntries('u1');
+    expect(after.map((e) => e.id)).toEqual(['a']);
+    expect(after[0].end).toBe(5000);
   });
 });

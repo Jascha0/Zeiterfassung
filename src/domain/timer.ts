@@ -19,6 +19,7 @@ export interface EntryClose {
 export interface TransitionPlan {
   close: EntryClose[];
   create: NewEntry | null;
+  delete: string[];
 }
 
 export class InvalidTimerActionError extends Error {
@@ -65,16 +66,16 @@ export function planTransition(entries: readonly Entry[], action: TimerAction, n
   }
   const active = status.activeEntry;
   if (action === 'start' || active === null) {
-    return { close: [], create: newEntry('work', now, now) };
+    return { close: [], create: newEntry('work', now, now), delete: [] };
   }
   const closeAt = Math.max(now, active.start);
   const close: EntryClose[] = [{ id: active.id, end: closeAt, updatedAt: now }];
   switch (action) {
     case 'pause':
-      return { close, create: newEntry('break', closeAt, now) };
+      return { close, create: newEntry('break', closeAt, now), delete: [] };
     case 'resume':
-      return { close, create: newEntry('work', closeAt, now) };
+      return { close, create: newEntry('work', closeAt, now), delete: [] };
     case 'end':
-      return { close, create: null };
+      return { close, create: null, delete: [] };
   }
 }

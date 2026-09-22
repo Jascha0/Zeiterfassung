@@ -1,4 +1,4 @@
-import type { Entry, TimeRange } from '../domain/types';
+import type { Entry, EntryType, NewEntry, TimeRange } from '../domain/types';
 import type { TransitionPlan } from '../domain/timer';
 import type { Unsubscribe } from '../auth/authTypes';
 import type { ThemePreference } from '../theme/theme';
@@ -10,6 +10,14 @@ export interface Preferences {
 export interface SubscriptionMeta {
   fromCache: boolean;
   hasPendingWrites: boolean;
+}
+
+export interface EntryPatch {
+  type?: EntryType;
+  start?: number;
+  end?: number | null;
+  /** Required; always set by the caller. */
+  updatedAt: number;
 }
 
 export interface EntryRepository {
@@ -26,8 +34,15 @@ export interface EntryRepository {
     onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
     onError: (error: Error) => void,
   ): Unsubscribe;
-  /** Resolves on server acknowledgement (may stay pending offline); rejects on rule rejection. */
+  /** Resolves on server acknowledgement (may stay pending offline); rejects on rule rejection.
+   *  Closes, the optional creation and the deletions are written as one all-or-nothing batch. */
   applyTransition(uid: string, plan: TransitionPlan): Promise<void>;
+  /** Resolves on server acknowledgement (may stay pending offline); rejects on rule rejection. */
+  createEntry(uid: string, entry: NewEntry): Promise<void>;
+  /** Resolves on server acknowledgement (may stay pending offline); rejects on rule rejection. */
+  updateEntry(uid: string, id: string, patch: EntryPatch): Promise<void>;
+  /** Resolves on server acknowledgement (may stay pending offline); rejects on rule rejection. */
+  deleteEntry(uid: string, id: string): Promise<void>;
 }
 
 export interface SettingsRepository {

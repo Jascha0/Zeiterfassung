@@ -1,7 +1,7 @@
 import type { Unsubscribe } from '../auth/authTypes';
 import type { TransitionPlan } from '../domain/timer';
-import type { Entry, TimeRange } from '../domain/types';
-import type { EntryRepository, Preferences, SettingsRepository, SubscriptionMeta } from './repository';
+import type { Entry, NewEntry, TimeRange } from '../domain/types';
+import type { EntryPatch, EntryRepository, Preferences, SettingsRepository, SubscriptionMeta } from './repository';
 
 interface EntrySubscription {
   kind: 'entries';
@@ -114,10 +114,17 @@ export class InMemoryRepository implements EntryRepository, SettingsRepository {
       return Promise.reject(Object.assign(new Error('not-found'), { code: 'not-found' }));
     }
 
-    const previous = plan.close.map((close) => ({ ...(userEntries.get(close.id) as Entry) }));
+    const previous: Entry[] = [];
     for (const close of plan.close) {
       const entry = userEntries.get(close.id) as Entry;
+      previous.push({ ...entry });
       userEntries.set(close.id, { ...entry, end: close.end, updatedAt: close.updatedAt });
+    }
+    for (const id of plan.delete) {
+      const entry = userEntries.get(id);
+      if (entry === undefined) continue;
+      previous.push({ ...entry });
+      userEntries.delete(id);
     }
     let createdId: string | null = null;
     if (plan.create !== null) {
@@ -131,6 +138,54 @@ export class InMemoryRepository implements EntryRepository, SettingsRepository {
       const current = this.userEntries(uid);
       if (createdId !== null) current.delete(createdId);
       for (const entry of previous) current.set(entry.id, entry);
+      this.notifyEntries(uid);
+    });
+  }
+
+  createEntry(uid: string, entry: NewEntry): Promise<void> {
+    const userEntries = this.userEntries(uid);
+    const id = `mem-${this.nextId++}`;
+    userEntries.set(id, { id, ...entry });
+    this.notifyEntries(uid);
+
+    return this.settleWrite(() => {
+      this.userEntries(uid).delete(id);
+      this.notifyEntries(uid);
+    });
+  }
+
+  updateEntry(uid: string, id: string, patch: EntryPatch): Promise<void> {
+    const userEntries = this.userEntries(uid);
+    const entry = userEntries.get(id);
+    if (entry === undefined) {
+      return Promise.reject(Object.assign(new Error('not-found'), { code: 'not-found' }));
+    }
+
+    const previous = { ...entry };
+    const next: Entry = { ...entry, updatedAt: patch.updatedAt };
+    if (patch.type !== undefined) next.type = patch.type;
+    if (patch.start !== undefined) next.start = patch.start;
+    if (patch.end !== undefined) next.end = patch.end;
+    userEntries.set(id, next);
+    this.notifyEntries(uid);
+
+    return this.settleWrite(() => {
+      this.userEntries(uid).set(id, previous);
+      this.notifyEntries(uid);
+    });
+  }
+
+  deleteEntry(uid: string, id: string): Promise<void> {
+    const userEntries = this.userEntries(uid);
+    const entry = userEntries.get(id);
+    if (entry === undefined) return this.settleWrite(() => {});
+
+    const previous = { ...entry };
+    userEntries.delete(id);
+    this.notifyEntries(uid);
+
+    return this.settleWrite(() => {
+      this.userEntries(uid).set(id, previous);
       this.notifyEntries(uid);
     });
   }
