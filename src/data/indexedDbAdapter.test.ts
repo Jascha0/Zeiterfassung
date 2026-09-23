@@ -63,13 +63,16 @@ async function rawPut(name: string, store: string, value: unknown): Promise<void
 }
 
 const OPEN: Entry = { id: 'a', type: 'work', start: 1000, end: null, createdAt: 1000, updatedAt: 1000 };
+/** Its id sorts *after* OPEN's while its start is *earlier*, so the store's key order (`getAll()` returns
+ *  primary-key order) and the expected start order disagree. Any assertion on the returned order therefore
+ *  fails if loadAll stops sorting. */
 const CLOSED: Entry = {
   id: 'b',
   type: 'break',
-  start: 5000,
-  end: 7000,
-  createdAt: 5000,
-  updatedAt: 6000,
+  start: 200,
+  end: 700,
+  createdAt: 200,
+  updatedAt: 300,
   projectId: 'p1',
   note: 'Mittag',
 };
@@ -100,13 +103,24 @@ describe('IndexedDbAdapter', () => {
   it('round-trips optional fields and a closed entry, and returns entries sorted by start ascending', async () => {
     const name = dbName();
     const adapter = adapterFor(name);
-    await adapter.apply({ put: [CLOSED, OPEN], delete: [], preferences: null });
+    await adapter.apply({ put: [OPEN, CLOSED], delete: [], preferences: null });
 
     const data = await adapter.loadAll();
-    expect(data.entries).toEqual([OPEN, CLOSED]);
-    expect(data.entries[1].end).toBe(7000);
-    expect(data.entries[1].projectId).toBe('p1');
-    expect(data.entries[1].note).toBe('Mittag');
+    expect(data.entries).toEqual([CLOSED, OPEN]);
+    expect(data.entries[0].end).toBe(700);
+    expect(data.entries[0].projectId).toBe('p1');
+    expect(data.entries[0].note).toBe('Mittag');
+  });
+
+  it('breaks a tie on equal starts by ascending id', async () => {
+    const name = dbName();
+    const adapter = adapterFor(name);
+    const second: Entry = { id: 'b', type: 'work', start: 300, end: 400, createdAt: 300, updatedAt: 300 };
+    const first: Entry = { id: 'a', type: 'break', start: 300, end: 400, createdAt: 300, updatedAt: 300 };
+    await adapter.apply({ put: [second, first], delete: [], preferences: null });
+
+    const data = await adapter.loadAll();
+    expect(data.entries).toEqual([first, second]);
   });
 
   it('skips a malformed record and still returns the valid ones', async () => {
@@ -116,7 +130,7 @@ describe('IndexedDbAdapter', () => {
     await rawPut(name, ENTRIES_STORE, { id: 'x', type: 'nope' });
 
     const data = await adapter.loadAll();
-    expect(data.entries).toEqual([OPEN, CLOSED]);
+    expect(data.entries).toEqual([CLOSED, OPEN]);
   });
 
   it('applies deletes and puts in one transaction', async () => {
