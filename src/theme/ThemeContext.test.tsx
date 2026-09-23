@@ -107,7 +107,7 @@ describe('ThemeProvider: remote adoption (edge case 33, review fix)', () => {
 
     const toastRegion = screen.getByRole('status');
     await waitFor(() =>
-      expect(within(toastRegion).getByText('Speichern fehlgeschlagen: keine Berechtigung.')).toBeInTheDocument(),
+      expect(within(toastRegion).getByText('Die Änderung konnte nicht gespeichert werden.')).toBeInTheDocument(),
     );
     // The optimistic local change still applied despite the failed save.
     expect(screen.getByTestId('preference')).toHaveTextContent('dark');

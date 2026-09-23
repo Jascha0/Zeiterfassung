@@ -136,13 +136,13 @@ describe('TimerView: offline (edge case 21)', () => {
     // Local state updates immediately from the synchronous notify.
     expect(await screen.findByText(/^Arbeitet seit/)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Speichern fehlgeschlagen/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/konnte nicht gespeichert werden/)).not.toBeInTheDocument();
 
     await act(async () => {
       repo.setOffline(false);
       await flushMicrotasks();
     });
-    expect(screen.queryByText(/Speichern fehlgeschlagen/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/konnte nicht gespeichert werden/)).not.toBeInTheDocument();
   });
 });
 
@@ -158,7 +158,7 @@ describe('TimerView: write rejected (edge case 22)', () => {
 
     const toastRegion = screen.getByRole('status');
     await waitFor(() =>
-      expect(within(toastRegion).getByText('Speichern fehlgeschlagen: keine Berechtigung.')).toBeInTheDocument(),
+      expect(within(toastRegion).getByText('Die Änderung konnte nicht gespeichert werden.')).toBeInTheDocument(),
     );
     // Rolled back to idle; buttons re-enabled.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Start' })).toBeEnabled());
