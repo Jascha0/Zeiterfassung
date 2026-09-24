@@ -233,8 +233,9 @@ describe('TimerView: multiple open entries link to the oldest one (B6)', () => {
   it('shows the new warning with a link to the oldest open entry, and drops the warning once it is closed', async () => {
     const uiUser = userEvent.setup();
     const now = Date.now();
-    const oldestStart = dayStartFromKey(toDateKey(now)) - 2 * 60 * 60 * 1000;
-    const newerStart = now - 60 * 60 * 1000;
+    const todayStart = dayStartFromKey(toDateKey(now));
+    const oldestStart = todayStart - 2 * 60 * 60 * 1000;
+    const newerStart = todayStart + Math.floor((now - todayStart) / 2);
     const { store } = createTestStore({
       entries: [
         { id: 'old', type: 'work', start: oldestStart, end: null, createdAt: oldestStart, updatedAt: oldestStart },

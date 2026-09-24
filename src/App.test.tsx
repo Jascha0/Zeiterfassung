@@ -108,8 +108,9 @@ describe('App: the timer links to the oldest open entry (B6)', () => {
   it("routes to that entry's day detail", async () => {
     const uiUser = userEvent.setup();
     const now = Date.now();
-    const oldestStart = dayStartFromKey(toDateKey(now)) - 2 * 60 * 60 * 1000;
-    const newerStart = now - 60 * 60 * 1000;
+    const todayStart = dayStartFromKey(toDateKey(now));
+    const oldestStart = todayStart - 2 * 60 * 60 * 1000;
+    const newerStart = todayStart + Math.floor((now - todayStart) / 2);
     renderApp(
       createTestStore({
         entries: [
