@@ -332,4 +332,33 @@ describe('LocalStore: a foreign channel message during the initial load', () => 
     expect(store.getEntries().map((e) => e.id)).toEqual(['a']);
     other.close();
   });
+
+  it("runs the postponed reload after the initial load, so a second tab's write during start-up is not dropped", async () => {
+    const hub = createFakeChannelHub();
+    const adapter = new InMemoryAdapter({ entries: [entry({ id: 'a', start: 100 })] });
+    const release = adapter.holdNextLoad();
+    const store = track(createLocalStore({ adapter, navigator: null, channelFactory: hub.factory }));
+    const other = hub.factory(() => undefined);
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    store.subscribeEntriesInRange(FULL_RANGE, onChange, onError);
+
+    // Another tab announces its write while this tab's very first load is still in flight. The
+    // initial load has already snapshotted (InMemoryAdapter snapshots before awaiting its hold),
+    // so the foreign entry can only arrive through the reload that is postponed until `ready`.
+    other.post({ origin: 'other-tab' });
+    await settle();
+    adapter.seedEntries([entry({ id: 'a', start: 100 }), entry({ id: 'b', start: 200 })]);
+    release();
+
+    await withTimeout(store.whenReady(), 'the initial load');
+    await vi.waitFor(() => expect(adapter.loadCount).toBe(2));
+    await settle();
+
+    expect(onError).not.toHaveBeenCalled();
+    // The initial load could only ever deliver ['a']; ['a','b'] proves the drained reload ran.
+    expect(onChange.mock.calls.at(-1)?.[0].map((e: Entry) => e.id)).toEqual(['a', 'b']);
+    expect(store.getEntries().map((e) => e.id)).toEqual(['a', 'b']);
+    other.close();
+  });
 });

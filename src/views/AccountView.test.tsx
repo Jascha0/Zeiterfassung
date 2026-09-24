@@ -100,7 +100,8 @@ describe('AccountView: theme', () => {
     await uiUser.click(dark);
     expect(dark).toBeChecked();
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
-    await waitFor(() => expect(store.getEntries).toBeDefined()); // sanity: store usable
+    // The choice is persisted through the store, not only reflected in the DOM.
+    await waitFor(() => expect(store.getPreferences()).toEqual({ theme: 'dark' }));
   });
 });
 

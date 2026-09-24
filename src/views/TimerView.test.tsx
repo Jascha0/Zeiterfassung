@@ -162,7 +162,7 @@ describe('TimerView: double click / rapid submit (edge case 15, review fix)', ()
 
   it('disables the action buttons while a write is pending, and applyTransition runs once on a double click', async () => {
     const user = userEvent.setup();
-    const store = new StuckStore({ adapter: new InMemoryAdapter(), navigator: null });
+    const store = new StuckStore({ adapter: new InMemoryAdapter(), navigator: null, channelFactory: noopChannelFactory });
     renderTimer(store);
     await screen.findByText('Nicht gestartet');
 
