@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { noopChannelFactory } from './channel';
-import { IndexedDbAdapter } from './indexedDbAdapter';
+import { ENTRIES_STORE, IndexedDbAdapter, META_STORE, PREFERENCES_KEY } from './indexedDbAdapter';
 import { createLocalStore, type LocalStore } from './localStore';
 import { STORE_FORMAT_VERSION } from './persistence';
 import { mapWriteError } from './writeErrors';
@@ -29,6 +29,27 @@ async function rejection(promise: Promise<void>): Promise<unknown> {
     return error;
   }
   throw new Error('expected the write to reject');
+}
+
+/** Writes straight into the database, bypassing the adapter's own mapping, so a record the store could
+ *  never have produced itself can be planted. Requires the database to exist already. */
+async function rawPut(name: string, storeName: string, value: unknown, key?: string): Promise<void> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(name, 1);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('raw open failed'));
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([storeName], 'readwrite');
+      if (key === undefined) tx.objectStore(storeName).put(value);
+      else tx.objectStore(storeName).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('raw put failed'));
+    });
+  } finally {
+    db.close();
+  }
 }
 
 afterEach(() => {
@@ -230,4 +251,33 @@ describe('LocalStore over IndexedDB: load timing (A12)', () => {
     },
     60_000,
   );
+});
+
+describe('LocalStore over IndexedDB: malformed stored records (edge cases 4 and 5)', () => {
+  it('skips every junk record and the junk preferences, loads the valid entries and reports no error', async () => {
+    const name = dbName();
+    const seed = storeOn(name);
+    await seed.whenReady();
+    await seed.createEntry({ type: 'work', start: 1000, end: 2000, createdAt: 1000, updatedAt: 1000 });
+    await seed.createEntry({ type: 'break', start: 3000, end: null, createdAt: 3000, updatedAt: 3000 });
+    await seed.savePreferences({ theme: 'dark' });
+    const valid = seed.getEntries();
+    seed.close();
+
+    // Wrong type, missing start, a non-numeric timestamp, and junk from an imagined future version.
+    await rawPut(name, ENTRIES_STORE, { id: 'junk-type', type: 'sleep', start: 10, end: null, createdAt: 1, updatedAt: 1 });
+    await rawPut(name, ENTRIES_STORE, { id: 'junk-no-start', type: 'work', end: null, createdAt: 1, updatedAt: 1 });
+    await rawPut(name, ENTRIES_STORE, { id: 'junk-ts', type: 'work', start: 10, end: null, createdAt: '1', updatedAt: 1 });
+    await rawPut(name, ENTRIES_STORE, { id: 'junk-future', kind: 'work', startedAt: 10, v: 7 });
+    await rawPut(name, META_STORE, { theme: 'neon' }, PREFERENCES_KEY);
+
+    const reread = storeOn(name);
+    const onError = vi.fn();
+    reread.subscribeEntriesInRange({ start: 0, end: 10_000 }, vi.fn(), onError);
+    await reread.whenReady();
+
+    expect(reread.getEntries()).toEqual(valid);
+    expect(reread.getPreferences()).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
+  });
 });

@@ -4,7 +4,9 @@ import { useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
-import type { LocalStore } from '../data/localStore';
+import { noopChannelFactory } from '../data/channel';
+import { InMemoryAdapter } from '../data/inMemoryAdapter';
+import { createLocalStore, type LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
 import { FakeAuthService } from '../test/fakeAuthService';
 import { THEME_STORAGE_KEY } from './theme';
@@ -110,5 +112,32 @@ describe('ThemeProvider: remote adoption (edge case 33, review fix)', () => {
     );
     // The optimistic local change still applied despite the failed save.
     expect(screen.getByTestId('preference')).toHaveTextContent('dark');
+  });
+});
+
+describe('ThemeProvider: failed initial load (edge case 2, A15)', () => {
+  it('stays subscribed, keeps the local preference and saves nothing', async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+    const adapter = new InMemoryAdapter({ preferences: { theme: 'light' } });
+    adapter.failNextLoad(new Error('boom'));
+    const store = createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory });
+    const saveSpy = vi.spyOn(store, 'savePreferences');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    renderTheme(store);
+
+    await act(async () => {
+      await store.whenReady();
+      await flushMicrotasks();
+    });
+
+    // The preference subscription exists in every state now, a failed load included.
+    expect(store.listenerCount()).toBe(1);
+    expect(screen.getByTestId('preference')).toHaveTextContent('dark');
+    expect(screen.getByTestId('resolved')).toHaveTextContent('dark');
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+
+    warn.mockRestore();
+    store.close();
   });
 });
