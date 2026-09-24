@@ -1,5 +1,6 @@
 import type { TransitionPlan } from '../domain/timer';
 import type { Entry, NewEntry, TimeRange } from '../domain/types';
+import { createDefaultChannel, type ChannelFactory, type StoreChannel } from './channel'; // task 8
 import { STORE_FORMAT_VERSION, type PersistenceAdapter, type StoreChanges } from './persistence';
 import { requestPersistentStorage, type StorageCapableNavigator } from './persistentStorage';
 import type { EntryPatch, EntryRepository, Preferences, SettingsRepository, Unsubscribe } from './repository';
@@ -23,6 +24,8 @@ type LoadState = 'loading' | 'ready' | 'failed';
 
 export interface LocalStoreOptions {
   adapter: PersistenceAdapter;
+  /** Defaults to createDefaultChannel. (task 8) */
+  channelFactory?: ChannelFactory;
   /** Omit to use globalThis.navigator; pass null for an environment without one. */
   navigator?: StorageCapableNavigator | null;
   /** Defaults to crypto.randomUUID(). */
@@ -51,6 +54,8 @@ function toError(value: unknown): Error {
 export class LocalStore implements EntryRepository, SettingsRepository {
   private readonly adapter: PersistenceAdapter;
   private readonly makeId: () => string;
+  private readonly channel: StoreChannel; // task 8
+  private readonly instanceId = `store-${Math.random().toString(36).slice(2)}`; // task 8
   private readonly subscriptions = new Set<Subscription>();
   private entries = new Map<string, Entry>();
   private preferences: Preferences | null = null;
@@ -68,6 +73,11 @@ export class LocalStore implements EntryRepository, SettingsRepository {
   constructor(options: LocalStoreOptions) {
     this.adapter = options.adapter;
     this.makeId = options.newId ?? (() => globalThis.crypto.randomUUID());
+    this.channel = (options.channelFactory ?? createDefaultChannel)((message) => {
+      // task 8
+      if (message.origin === this.instanceId) return;
+      void this.load(false);
+    });
     this.ready = new Promise<void>((resolve) => {
       this.resolveReady = resolve;
     });
@@ -98,6 +108,7 @@ export class LocalStore implements EntryRepository, SettingsRepository {
 
   close(): void {
     this.subscriptions.clear();
+    this.channel.close(); // task 8
     this.adapter.close();
   }
 
@@ -232,6 +243,7 @@ export class LocalStore implements EntryRepository, SettingsRepository {
     return applied.then(
       () => {
         this.settleWrite();
+        this.channel.post({ origin: this.instanceId }); // task 8
       },
       (error: unknown) => {
         rollback();

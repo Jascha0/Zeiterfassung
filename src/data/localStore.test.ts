@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTestStore } from '../test/createTestStore';
+import { createFakeChannelHub } from '../test/fakeChannel';
 import type { TransitionPlan } from '../domain/timer';
 import type { Entry } from '../domain/types';
 import { InMemoryAdapter } from './inMemoryAdapter';
@@ -247,5 +248,74 @@ describe('LocalStore: ids', () => {
     expect(adapter.storedEntries()[0].id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
+  });
+});
+
+describe('LocalStore: multi-tab propagation (0033)', () => {
+  it("delivers another instance's write to this instance's subscribers without a reload", async () => {
+    const hub = createFakeChannelHub();
+    const shared = new InMemoryAdapter();
+    const a = createLocalStore({ adapter: shared, navigator: null, channelFactory: hub.factory, newId: () => 'w1' });
+    const b = createLocalStore({ adapter: shared, navigator: null, channelFactory: hub.factory });
+    await Promise.all([a.whenReady(), b.whenReady()]);
+    const onChange = vi.fn();
+    b.subscribeOpenEntries(onChange, vi.fn());
+    await flushMicrotasks();
+    expect(onChange.mock.calls[0][0]).toEqual([]);
+
+    await a.createEntry({ type: 'work', start: 5000, end: null, createdAt: 5000, updatedAt: 5000 });
+    await vi.waitFor(() => expect(onChange.mock.calls.at(-1)?.[0].map((e: Entry) => e.id)).toEqual(['w1']));
+    a.close();
+    b.close();
+  });
+});
+
+describe('LocalStore: reload ordering (A9)', () => {
+  it('discards a held older reload so it cannot overwrite newer state', async () => {
+    const hub = createFakeChannelHub();
+    const adapter = new InMemoryAdapter();
+    const b = createLocalStore({ adapter, navigator: null, channelFactory: hub.factory });
+    const other = hub.factory(() => undefined);
+    await b.whenReady();
+    const onChange = vi.fn();
+    b.subscribeEntriesInRange({ start: 0, end: 10_000 }, onChange, vi.fn());
+    await flushMicrotasks();
+
+    adapter.seedEntries([entry({ id: 's1', start: 1000 })]);
+    const release = adapter.holdNextLoad();
+    other.post({ origin: 'other-tab' });
+
+    adapter.seedEntries([entry({ id: 's2', start: 2000 })]);
+    other.post({ origin: 'other-tab' });
+    await vi.waitFor(() => expect(onChange.mock.calls.at(-1)?.[0].map((e: Entry) => e.id)).toEqual(['s2']));
+
+    release();
+    for (let i = 0; i < 10; i += 1) await flushMicrotasks();
+
+    expect(b.getEntries().map((e) => e.id)).toEqual(['s2']);
+    expect(onChange.mock.calls.at(-1)?.[0].map((e: Entry) => e.id)).toEqual(['s2']);
+    other.close();
+    b.close();
+  });
+
+  it('postpones a reload that arrives while a local write is in flight', async () => {
+    const hub = createFakeChannelHub();
+    const adapter = new InMemoryAdapter();
+    const b = createLocalStore({ adapter, navigator: null, channelFactory: hub.factory, newId: () => 'local-1' });
+    const other = hub.factory(() => undefined);
+    await b.whenReady();
+
+    const releaseApply = adapter.holdNextApply();
+    const write = b.createEntry({ type: 'work', start: 3000, end: null, createdAt: 3000, updatedAt: 3000 });
+    other.post({ origin: 'other-tab' });
+    expect(adapter.loadCount).toBe(1);
+
+    releaseApply();
+    await write;
+    await vi.waitFor(() => expect(adapter.loadCount).toBe(2));
+
+    expect(b.getEntries().map((e) => e.id)).toEqual(['local-1']);
+    other.close();
+    b.close();
   });
 });

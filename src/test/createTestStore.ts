@@ -1,3 +1,4 @@
+import { noopChannelFactory, type ChannelFactory } from '../data/channel'; // task 8
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from '../data/localStore';
 import type { Preferences } from '../data/repository';
@@ -9,6 +10,7 @@ export interface TestStoreSeed {
 }
 
 export interface TestStoreOptions {
+  channelFactory?: ChannelFactory; // task 8
   /** Defaults to sequential ids mem-1, mem-2, … per store. */
   newId?: () => string;
 }
@@ -25,6 +27,7 @@ export function createTestStore(seed: TestStoreSeed = {}, options: TestStoreOpti
   const store = createLocalStore({
     adapter,
     navigator: null,
+    channelFactory: options.channelFactory ?? noopChannelFactory, // task 8
     newId: options.newId ?? (() => `mem-${++counter}`),
   });
   return { store, adapter };
