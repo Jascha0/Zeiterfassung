@@ -22,8 +22,6 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
-        // Firebase Auth redirect handler must reach the network, never the SPA shell.
-        navigateFallbackDenylist: [/^\/__\//],
         globPatterns: ['**/*.{js,css,html,svg}'],
       },
     }),

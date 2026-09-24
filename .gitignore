@@ -3,8 +3,4 @@ dist
 dev-dist
 .env
 .env.*
-!.env.example
 *.log
-.firebase/
-firebase-debug.log
-firestore-debug.log
