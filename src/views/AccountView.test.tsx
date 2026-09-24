@@ -5,21 +5,11 @@ import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import { AuthError } from '../auth/authTypes';
 import type { AuthUser } from '../auth/authTypes';
+import { testAuthUser } from '../test/authUser';
 import { createTestStore } from '../test/createTestStore';
 import { FakeAuthService } from '../test/fakeAuthService';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { AccountView } from './AccountView';
-
-function user(overrides: Partial<AuthUser> = {}): AuthUser {
-  return {
-    uid: 'u1',
-    email: 'a@b.de',
-    displayName: null,
-    emailVerified: true,
-    providerIds: ['password'],
-    ...overrides,
-  };
-}
 
 function renderAccountView(authUser: AuthUser, auth = new FakeAuthService()) {
   const { store } = createTestStore();
@@ -27,7 +17,7 @@ function renderAccountView(authUser: AuthUser, auth = new FakeAuthService()) {
   render(
     <ServicesProvider services={services}>
       <ToastProvider>
-        <ThemeProvider uid={authUser.uid}>
+        <ThemeProvider>
           <AccountView user={authUser} />
         </ThemeProvider>
       </ToastProvider>
@@ -39,7 +29,7 @@ function renderAccountView(authUser: AuthUser, auth = new FakeAuthService()) {
 describe('AccountView: linking buttons (edge case 13/14)', () => {
   it('offers "Google verknüpfen" when Google is not linked, and links successfully', async () => {
     const uiUser = userEvent.setup();
-    const { auth } = renderAccountView(user({ providerIds: ['password'] }));
+    const { auth } = renderAccountView(testAuthUser({ providerIds: ['password'] }));
     const button = screen.getByRole('button', { name: 'Google verknüpfen' });
     await uiUser.click(button);
     await waitFor(() => expect(auth.linkGoogle).toHaveBeenCalled());
@@ -47,20 +37,20 @@ describe('AccountView: linking buttons (edge case 13/14)', () => {
   });
 
   it('shows "Google: verknüpft" and no button when already linked', () => {
-    renderAccountView(user({ providerIds: ['password', 'google.com'] }));
+    renderAccountView(testAuthUser({ providerIds: ['password', 'google.com'] }));
     expect(screen.getByText('Google: verknüpft')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Google verknüpfen' })).not.toBeInTheDocument();
   });
 
   it('shows "Passwort: festgelegt" and no form when password is already linked', () => {
-    renderAccountView(user({ providerIds: ['password', 'google.com'] }));
+    renderAccountView(testAuthUser({ providerIds: ['password', 'google.com'] }));
     expect(screen.getByText('Passwort: festgelegt')).toBeInTheDocument();
     expect(screen.queryByLabelText('Neues Passwort')).not.toBeInTheDocument();
   });
 
   it('offers a "Passwort festlegen" form when only Google is linked, validates and links', async () => {
     const uiUser = userEvent.setup();
-    const { auth } = renderAccountView(user({ providerIds: ['google.com'] }));
+    const { auth } = renderAccountView(testAuthUser({ providerIds: ['google.com'] }));
 
     await uiUser.type(screen.getByLabelText('Neues Passwort'), '1234567');
     await uiUser.type(screen.getByLabelText('Passwort bestätigen'), '1234567');
@@ -83,7 +73,7 @@ describe('AccountView: linking buttons (edge case 13/14)', () => {
     auth.linkGoogle.mockRejectedValueOnce(
       new AuthError('credential-already-in-use', 'Dieses Google-Konto ist bereits mit einem anderen Zeiterfassungs-Konto verknüpft.'),
     );
-    renderAccountView(user({ providerIds: ['password'] }), auth);
+    renderAccountView(testAuthUser({ providerIds: ['password'] }), auth);
     await uiUser.click(screen.getByRole('button', { name: 'Google verknüpfen' }));
     expect(
       await screen.findByText('Dieses Google-Konto ist bereits mit einem anderen Zeiterfassungs-Konto verknüpft.'),
@@ -94,7 +84,7 @@ describe('AccountView: linking buttons (edge case 13/14)', () => {
     const uiUser = userEvent.setup();
     const auth = new FakeAuthService();
     auth.linkGoogle.mockRejectedValueOnce({ code: 'auth/popup-closed-by-user' });
-    renderAccountView(user({ providerIds: ['password'] }), auth);
+    renderAccountView(testAuthUser({ providerIds: ['password'] }), auth);
     await uiUser.click(screen.getByRole('button', { name: 'Google verknüpfen' }));
     await waitFor(() => expect(auth.linkGoogle).toHaveBeenCalled());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -104,7 +94,7 @@ describe('AccountView: linking buttons (edge case 13/14)', () => {
 describe('AccountView: theme', () => {
   it('reflects and changes the theme preference via radio buttons', async () => {
     const uiUser = userEvent.setup();
-    const { store } = renderAccountView(user());
+    const { store } = renderAccountView(testAuthUser());
     const dark = screen.getByRole('radio', { name: 'Dunkel' });
     expect(dark).not.toBeChecked();
     await uiUser.click(dark);
@@ -117,7 +107,7 @@ describe('AccountView: theme', () => {
 describe('AccountView: sign-out', () => {
   it('calls auth.signOut when clicking "Abmelden"', async () => {
     const uiUser = userEvent.setup();
-    const { auth } = renderAccountView(user());
+    const { auth } = renderAccountView(testAuthUser());
     await uiUser.click(screen.getByRole('button', { name: 'Abmelden' }));
     await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
   });
@@ -125,7 +115,7 @@ describe('AccountView: sign-out', () => {
 
 describe('AccountView: account info', () => {
   it('shows email and displayName when present', () => {
-    renderAccountView(user({ displayName: 'Alex' }));
+    renderAccountView(testAuthUser({ displayName: 'Alex' }));
     expect(screen.getByText('Alex')).toBeInTheDocument();
     expect(screen.getByText('a@b.de')).toBeInTheDocument();
   });

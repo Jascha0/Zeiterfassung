@@ -76,7 +76,9 @@ describe('App: sign-out (edge case 5)', () => {
     await uiUser.click(screen.getByRole('button', { name: 'Abmelden' }));
 
     expect(await screen.findByRole('heading', { name: 'Anmeldung' })).toBeInTheDocument();
-    await waitFor(() => expect(store.listenerCount()).toBe(0));
+    // The theme preference is subscribed in every state now (0034, requirement 10): after sign-out the
+    // two timer subscriptions are gone and only ThemeProvider's preferences subscription remains.
+    await waitFor(() => expect(store.listenerCount()).toBe(1));
   });
 });
 

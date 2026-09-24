@@ -10,8 +10,6 @@ import { FakeAuthService } from '../test/fakeAuthService';
 import { THEME_STORAGE_KEY } from './theme';
 import { ThemeProvider, useTheme } from './ThemeContext';
 
-const UID = 'u1';
-
 function flushMicrotasks(): Promise<void> {
   return new Promise((resolve) => queueMicrotask(resolve));
 }
@@ -41,7 +39,7 @@ function renderTheme(store: LocalStore, onRender?: (pref: string) => void) {
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>
-        <ThemeProvider uid={UID}>
+        <ThemeProvider>
           <ThemeProbe onRender={onRender} />
         </ThemeProvider>
       </ToastProvider>

@@ -38,10 +38,6 @@ export interface EntryRepository {
 }
 
 export interface SettingsRepository {
-  subscribePreferences(
-    uid: string,
-    onChange: (prefs: Preferences | null) => void,
-    onError: (error: Error) => void,
-  ): Unsubscribe;
-  savePreferences(uid: string, prefs: Preferences): Promise<void>;
+  subscribePreferences(onChange: (prefs: Preferences | null) => void, onError: (error: Error) => void): Unsubscribe;
+  savePreferences(prefs: Preferences): Promise<void>;
 }

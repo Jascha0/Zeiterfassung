@@ -60,14 +60,14 @@ function Gate(): React.JSX.Element {
 
   if (user === null) {
     return (
-      <ThemeProvider uid={null}>
+      <ThemeProvider>
         <LoginView />
       </ThemeProvider>
     );
   }
 
   return (
-    <ThemeProvider key={user.uid} uid={user.uid}>
+    <ThemeProvider key={user.uid}>
       <Shell user={user} />
     </ThemeProvider>
   );

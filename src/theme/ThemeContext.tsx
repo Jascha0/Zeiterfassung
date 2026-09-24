@@ -38,8 +38,7 @@ function systemPrefersDark(): boolean {
   return typeof window.matchMedia === 'function' ? window.matchMedia(DARK_QUERY).matches : false;
 }
 
-export function ThemeProvider(props: { uid: string | null; children: React.ReactNode }): React.JSX.Element {
-  const { uid } = props;
+export function ThemeProvider(props: { children: React.ReactNode }): React.JSX.Element {
   const { settings } = useServices();
   const { showToast } = useToast();
   const [preference, setPreferenceState] = useState<ThemePreference>(() => readLocalTheme(localStore()));
@@ -62,9 +61,7 @@ export function ThemeProvider(props: { uid: string | null; children: React.React
   }, []);
 
   useEffect(() => {
-    if (uid === null) return;
     return settings.subscribePreferences(
-      uid,
       (prefs) => {
         if (prefs === null || prefs.theme === preferenceRef.current) return;
         preferenceRef.current = prefs.theme;
@@ -74,7 +71,7 @@ export function ThemeProvider(props: { uid: string | null; children: React.React
       },
       (error) => console.warn('Design-Einstellung konnte nicht geladen werden', error),
     );
-  }, [settings, uid]);
+  }, [settings]);
 
   const setPreference = useCallback(
     (pref: ThemePreference) => {
@@ -82,11 +79,9 @@ export function ThemeProvider(props: { uid: string | null; children: React.React
       setPreferenceState(pref);
       writeLocalTheme(localStore(), pref);
       applyTheme(resolveTheme(pref, systemPrefersDark()), document.documentElement);
-      if (uid !== null) {
-        settings.savePreferences(uid, { theme: pref }).catch((error: unknown) => showToast(mapWriteError(error)));
-      }
+      settings.savePreferences({ theme: pref }).catch((error: unknown) => showToast(mapWriteError(error)));
     },
-    [settings, showToast, uid],
+    [settings, showToast],
   );
 
   const value = useMemo<ThemeContextValue>(

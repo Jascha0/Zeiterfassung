@@ -124,7 +124,6 @@ export class LocalStore implements EntryRepository, SettingsRepository {
   }
 
   subscribePreferences(
-    _uid: string,
     onChange: (prefs: Preferences | null) => void,
     onError: (error: Error) => void,
   ): Unsubscribe {
@@ -203,7 +202,7 @@ export class LocalStore implements EntryRepository, SettingsRepository {
     });
   }
 
-  savePreferences(_uid: string, prefs: Preferences): Promise<void> {
+  savePreferences(prefs: Preferences): Promise<void> {
     return this.write(() => {
       const previous = this.preferences;
       this.preferences = { theme: prefs.theme };
