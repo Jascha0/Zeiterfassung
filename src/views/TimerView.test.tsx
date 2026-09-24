@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
+import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
@@ -138,7 +139,7 @@ describe('TimerView: subscription error (edge case 23)', () => {
   it('shows the load-error message and does not crash', async () => {
     const adapter = new InMemoryAdapter();
     adapter.failNextLoad(new Error('boom'));
-    renderTimer(createLocalStore({ adapter, navigator: null }));
+    renderTimer(createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Daten konnten nicht geladen werden.');
     expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument();
   });

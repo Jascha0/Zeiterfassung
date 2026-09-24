@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { createTestStore } from '../test/createTestStore';
 import { createFakeChannelHub } from '../test/fakeChannel';
 import type { TransitionPlan } from '../domain/timer';
+import { buildMonthSummary, monthRange } from '../domain/monthView';
 import type { Entry } from '../domain/types';
+import { noopChannelFactory } from './channel';
 import { InMemoryAdapter } from './inMemoryAdapter';
 import { createLocalStore } from './localStore';
+import { mapWriteError } from './writeErrors';
 
 function entry(overrides: Partial<Entry> & { id: string }): Entry {
   return { type: 'work', start: 0, end: null, createdAt: 0, updatedAt: 0, ...overrides };
@@ -42,7 +45,7 @@ describe('LocalStore: initial delivery', () => {
   it('delivers nothing before the initial load resolves, then exactly once', async () => {
     const adapter = new InMemoryAdapter({ entries: [entry({ id: 'a', start: 100 })] });
     const release = adapter.holdNextLoad();
-    const store = createLocalStore({ adapter, navigator: null });
+    const store = createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory });
     const onChange = vi.fn();
     store.subscribeOpenEntries(onChange, vi.fn());
     await flushMicrotasks();
@@ -174,7 +177,7 @@ describe('LocalStore: failed initial load', () => {
     const release = adapter.holdNextLoad();
     const loadError = new Error('boom');
     adapter.failNextLoad(loadError);
-    const store = createLocalStore({ adapter, navigator: null });
+    const store = createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory });
 
     const onErrorBefore = vi.fn();
     store.subscribeOpenEntries(vi.fn(), onErrorBefore);
@@ -202,7 +205,12 @@ describe('LocalStore: persistent storage request (A8)', () => {
   it('requests persistence once and writes when persistence is granted', async () => {
     const persist = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
     const adapter = new InMemoryAdapter();
-    const store = createLocalStore({ adapter, navigator: { storage: { persist } }, newId: () => 'id-1' });
+    const store = createLocalStore({
+      adapter,
+      navigator: { storage: { persist } },
+      channelFactory: noopChannelFactory,
+      newId: () => 'id-1',
+    });
     await store.whenReady();
     expect(persist).toHaveBeenCalledTimes(1);
 
@@ -213,7 +221,12 @@ describe('LocalStore: persistent storage request (A8)', () => {
   it('requests persistence once and writes when persistence is denied', async () => {
     const persist = vi.fn<() => Promise<boolean>>().mockResolvedValue(false);
     const adapter = new InMemoryAdapter();
-    const store = createLocalStore({ adapter, navigator: { storage: { persist } }, newId: () => 'id-1' });
+    const store = createLocalStore({
+      adapter,
+      navigator: { storage: { persist } },
+      channelFactory: noopChannelFactory,
+      newId: () => 'id-1',
+    });
     await store.whenReady();
     expect(persist).toHaveBeenCalledTimes(1);
 
@@ -223,7 +236,7 @@ describe('LocalStore: persistent storage request (A8)', () => {
 
   it('writes identically for a navigator without a storage API', async () => {
     const adapter = new InMemoryAdapter();
-    const store = createLocalStore({ adapter, navigator: {}, newId: () => 'id-1' });
+    const store = createLocalStore({ adapter, navigator: {}, channelFactory: noopChannelFactory, newId: () => 'id-1' });
     await store.whenReady();
 
     await store.createEntry(newEntry);
@@ -242,7 +255,7 @@ describe('LocalStore: ids', () => {
 
   it('falls back to a random uuid when no newId is injected', async () => {
     const adapter = new InMemoryAdapter();
-    const store = createLocalStore({ adapter, navigator: null });
+    const store = createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory });
     await store.whenReady();
     await store.createEntry({ type: 'work', start: 100, end: null, createdAt: 100, updatedAt: 100 });
     expect(adapter.storedEntries()[0].id).toMatch(
@@ -318,4 +331,275 @@ describe('LocalStore: reload ordering (A9)', () => {
     other.close();
     b.close();
   });
+});
+
+describe('LocalStore: subscription bookkeeping', () => {
+  it('listenerCount reflects active subscriptions and unsubscribe removes them', async () => {
+    const { store } = createTestStore();
+    await store.whenReady();
+    expect(store.listenerCount()).toBe(0);
+
+    const unsubscribeEntries = store.subscribeOpenEntries(vi.fn(), vi.fn());
+    const unsubscribePreferences = store.subscribePreferences(vi.fn(), vi.fn());
+    expect(store.listenerCount()).toBe(2);
+
+    unsubscribeEntries();
+    expect(store.listenerCount()).toBe(1);
+    unsubscribePreferences();
+    expect(store.listenerCount()).toBe(0);
+  });
+
+  it('unsubscribe is idempotent', async () => {
+    const { store } = createTestStore();
+    await store.whenReady();
+    const unsubscribe = store.subscribeOpenEntries(vi.fn(), vi.fn());
+    unsubscribe();
+    expect(() => unsubscribe()).not.toThrow();
+    expect(store.listenerCount()).toBe(0);
+  });
+
+  it('never delivers to a subscription cancelled before its microtask runs', async () => {
+    const { store } = createTestStore({ entries: [entry({ id: 'a', start: 100 })] });
+    await store.whenReady();
+    const onChange = vi.fn();
+    const onError = vi.fn();
+
+    const unsubscribe = store.subscribeEntriesInRange({ start: 0, end: 10_000 }, onChange, onError);
+    unsubscribe();
+    await flushMicrotasks();
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+});
+
+describe('LocalStore: getEntries snapshot', () => {
+  it('returns every entry sorted by start asc', async () => {
+    const { store } = createTestStore({
+      entries: [entry({ id: 'b', start: 200 }), entry({ id: 'a', start: 100 }), entry({ id: 'c', start: 300 })],
+    });
+    await store.whenReady();
+    expect(store.getEntries().map((e) => e.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns copies, so mutating the result does not change the store', async () => {
+    const { store } = createTestStore({ entries: [entry({ id: 'a', start: 100 })] });
+    await store.whenReady();
+
+    const snapshot = store.getEntries();
+    snapshot[0].start = 9999;
+
+    expect(store.getEntries()[0].start).toBe(100);
+  });
+});
+
+describe('LocalStore: updateEntry', () => {
+  it('applies only the patched fields, bumps updatedAt and persists the result', async () => {
+    const seed = entry({ id: 'a', type: 'work', start: 1000, createdAt: 1000, updatedAt: 1000 });
+    const { store, adapter } = createTestStore({ entries: [seed] });
+    await store.whenReady();
+
+    await store.updateEntry('a', { end: 5000, updatedAt: 7000 });
+
+    expect(store.getEntries()).toEqual([{ ...seed, end: 5000, updatedAt: 7000 }]);
+    expect(adapter.storedEntries()).toEqual([{ ...seed, end: 5000, updatedAt: 7000 }]);
+  });
+
+  it('rejects an unknown id with a not-found error and changes nothing', async () => {
+    const seed = [entry({ id: 'a', start: 1000 })];
+    const { store, adapter } = createTestStore({ entries: seed });
+    await store.whenReady();
+
+    await expect(store.updateEntry('does-not-exist', { updatedAt: 2000 })).rejects.toMatchObject({
+      code: 'not-found',
+    });
+    expect(store.getEntries()).toEqual(seed);
+    expect(adapter.storedEntries()).toEqual(seed);
+    expect(adapter.applyCount).toBe(0);
+  });
+});
+
+describe('LocalStore: deleteEntry', () => {
+  it('resolves for an unknown id without calling the adapter', async () => {
+    const seed = [entry({ id: 'a', start: 1000 })];
+    const { store, adapter } = createTestStore({ entries: seed });
+    await store.whenReady();
+
+    await expect(store.deleteEntry('does-not-exist')).resolves.toBeUndefined();
+    expect(adapter.applyCount).toBe(0);
+    expect(store.getEntries()).toEqual(seed);
+    expect(adapter.storedEntries()).toEqual(seed);
+  });
+
+  it('rolls a failed delete back into memory and leaves the entry in the adapter', async () => {
+    const seed = [entry({ id: 'a', start: 1000 }), entry({ id: 'b', start: 2000 })];
+    const { store, adapter } = createTestStore({ entries: seed });
+    await store.whenReady();
+    const onChange = vi.fn();
+    store.subscribeEntriesInRange({ start: 0, end: 10_000 }, onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    const error = Object.assign(new Error('boom'), { name: 'AbortError' });
+    adapter.failNextApply(error);
+    await expect(store.deleteEntry('a')).rejects.toBe(error);
+
+    expect(store.getEntries()).toEqual(seed);
+    expect(adapter.storedEntries()).toEqual(seed);
+    expect(onChange.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(onChange.mock.calls.at(-1)?.[0].map((e: Entry) => e.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('LocalStore: savePreferences', () => {
+  it('notifies the preferences subscription and stores the value', async () => {
+    const { store, adapter } = createTestStore();
+    await store.whenReady();
+    const onChange = vi.fn();
+    store.subscribePreferences(onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    await expect(store.savePreferences({ theme: 'dark' })).resolves.toBeUndefined();
+
+    expect(onChange).toHaveBeenCalledWith({ theme: 'dark' });
+    expect(store.getPreferences()).toEqual({ theme: 'dark' });
+    expect(adapter.storedPreferences()).toEqual({ theme: 'dark' });
+  });
+
+  it('rolls back to the previous value and rejects when the write fails', async () => {
+    const { store, adapter } = createTestStore({ preferences: { theme: 'light' } });
+    await store.whenReady();
+    const onChange = vi.fn();
+    store.subscribePreferences(onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    const error = new Error('fail');
+    adapter.failNextApply(error);
+    await expect(store.savePreferences({ theme: 'dark' })).rejects.toBe(error);
+
+    expect(store.getPreferences()).toEqual({ theme: 'light' });
+    expect(onChange.mock.calls.at(-1)?.[0]).toEqual({ theme: 'light' });
+    expect(adapter.storedPreferences()).toEqual({ theme: 'light' });
+  });
+
+  it('rolls back to null when there were no preferences before', async () => {
+    const { store, adapter } = createTestStore();
+    await store.whenReady();
+    const onChange = vi.fn();
+    store.subscribePreferences(onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    const error = new Error('fail');
+    adapter.failNextApply(error);
+    await expect(store.savePreferences({ theme: 'dark' })).rejects.toBe(error);
+
+    expect(store.getPreferences()).toBeNull();
+    expect(onChange.mock.calls.at(-1)?.[0]).toBeNull();
+    expect(adapter.storedPreferences()).toBeNull();
+  });
+
+  it('delivers null to a preferences subscription on an empty store', async () => {
+    const { store } = createTestStore();
+    await store.whenReady();
+    const onChange = vi.fn();
+    store.subscribePreferences(onChange, vi.fn());
+    await flushMicrotasks();
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('LocalStore: empty plan', () => {
+  it('resolves and changes nothing', async () => {
+    const seed = [entry({ id: 'a', start: 1000 })];
+    const { store, adapter } = createTestStore({ entries: seed });
+    await store.whenReady();
+
+    await expect(store.applyTransition({ close: [], create: null, delete: [] })).resolves.toBeUndefined();
+
+    expect(store.getEntries()).toEqual(seed);
+    expect(adapter.storedEntries()).toEqual(seed);
+  });
+});
+
+describe('LocalStore: writes around the initial load', () => {
+  const newEntry = { type: 'work' as const, start: 5000, end: null, createdAt: 5000, updatedAt: 5000 };
+
+  it('applies a write issued before the initial load resolved once it has resolved', async () => {
+    const adapter = new InMemoryAdapter({ entries: [entry({ id: 'a', start: 100 })] });
+    const release = adapter.holdNextLoad();
+    const store = createLocalStore({
+      adapter,
+      navigator: null,
+      channelFactory: noopChannelFactory,
+      newId: () => 'w1',
+    });
+
+    const write = store.createEntry(newEntry);
+    await flushMicrotasks();
+    expect(adapter.applyCount).toBe(0);
+
+    release();
+    await write;
+
+    expect(store.getEntries().map((e) => e.id)).toEqual(['a', 'w1']);
+    expect(adapter.storedEntries().map((e) => e.id)).toEqual(['a', 'w1']);
+  });
+
+  it('rejects a write issued after a failed initial load with the generic write message', async () => {
+    const adapter = new InMemoryAdapter();
+    adapter.failNextLoad(new Error('boom'));
+    const store = createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory });
+    await store.whenReady();
+
+    let rejection: unknown = null;
+    await store.createEntry(newEntry).catch((error: unknown) => {
+      rejection = error;
+    });
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect(mapWriteError(rejection)).toBe('Die Änderung konnte nicht gespeichert werden.');
+    expect(adapter.applyCount).toBe(0);
+    expect(store.getEntries()).toEqual([]);
+  });
+});
+
+describe('LocalStore: read performance (10 000 entries)', () => {
+  it(
+    'serves one month range plus the monthView derivation in under 100 ms',
+    async () => {
+      const base = new Date(2020, 0, 1).getTime();
+      const entries: Entry[] = [];
+      for (let i = 0; i < 10_000; i += 1) {
+        const start = base + i * 6 * 60 * 60 * 1000;
+        entries.push({ id: `e${i}`, type: 'work', start, end: start + 3_600_000, createdAt: start, updatedAt: start });
+      }
+      const { store } = createTestStore({ entries });
+      await store.whenReady();
+      const monthStart = new Date(2026, 8, 1).getTime();
+      const range = monthRange(monthStart);
+      const now = new Date(2026, 8, 18, 12, 0).getTime();
+
+      const started = performance.now();
+      const delivered = await new Promise<Entry[]>((resolve) => {
+        const unsubscribe = store.subscribeEntriesInRange(
+          range,
+          (result) => {
+            resolve(result);
+            queueMicrotask(unsubscribe);
+          },
+          () => resolve([]),
+        );
+      });
+      const summary = buildMonthSummary(monthStart, delivered, now);
+      const elapsed = performance.now() - started;
+
+      expect(summary.days.length).toBeGreaterThan(0);
+      console.info(`month range + monthView over 10000 entries: ${Math.round(elapsed)} ms`);
+      expect(elapsed).toBeLessThan(100);
+    },
+    30_000,
+  );
 });

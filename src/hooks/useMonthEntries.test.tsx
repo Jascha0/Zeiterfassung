@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
+import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
@@ -48,7 +49,7 @@ describe('useMonthEntries: initial load', () => {
   it('reports loading until the initial local load resolves, then the month entries', async () => {
     const adapter = new InMemoryAdapter({ entries: [IN_MONTH_ENTRY] });
     const release = adapter.holdNextLoad();
-    const store = createLocalStore({ adapter, navigator: null });
+    const store = createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory });
     render(<Probe store={store} />);
 
     expect(screen.getByTestId('loading')).toHaveTextContent('true');
@@ -67,7 +68,7 @@ describe('useMonthEntries: initial load', () => {
   it('reports the load error and no entries when the initial load fails', async () => {
     const adapter = new InMemoryAdapter({ entries: [IN_MONTH_ENTRY] });
     adapter.failNextLoad(new Error('boom'));
-    const store = createLocalStore({ adapter, navigator: null });
+    const store = createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory });
     render(<Probe store={store} />);
 
     await waitFor(() =>

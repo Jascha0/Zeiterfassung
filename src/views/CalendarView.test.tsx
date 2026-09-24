@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
+import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
@@ -81,7 +82,7 @@ describe('CalendarView: initial load (A7)', () => {
   it('shows "Lädt…" and no grid while the initial load is pending', async () => {
     const adapter = new InMemoryAdapter();
     const release = adapter.holdNextLoad();
-    const store = createLocalStore({ adapter, navigator: null });
+    const store = createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory });
     renderCalendar(store);
     expect(screen.getByText('Lädt…')).toBeInTheDocument();
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
@@ -95,7 +96,7 @@ describe('CalendarView: initial load (A7)', () => {
   it('shows the load error and no grid when the initial load fails', async () => {
     const adapter = new InMemoryAdapter();
     adapter.failNextLoad(new Error('boom'));
-    const store = createLocalStore({ adapter, navigator: null });
+    const store = createLocalStore({ adapter, navigator: null, channelFactory: noopChannelFactory });
     renderCalendar(store);
     expect(await screen.findByRole('alert')).toHaveTextContent('Daten konnten nicht geladen werden.');
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
