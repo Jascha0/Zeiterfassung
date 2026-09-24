@@ -272,9 +272,10 @@ export class LocalStore implements EntryRepository, SettingsRepository {
 
   /** initial === true: the one load at startup, whose failure becomes the views' load error.
    *  initial === false: a reload triggered by another tab (task 8). A reload never overwrites newer
-   *  state: it is postponed while a write is in flight and discarded if a later reload started first. */
+   *  state: it is postponed while a write or the initial load is in flight and discarded if a later
+   *  reload started first. */
   private async load(initial: boolean): Promise<void> {
-    if (!initial && this.pendingWrites > 0) {
+    if (!initial && (this.state === 'loading' || this.pendingWrites > 0)) {
       this.reloadRequested = true;
       return;
     }
@@ -303,6 +304,10 @@ export class LocalStore implements EntryRepository, SettingsRepository {
       this.state = 'ready';
       this.resolveReady();
       this.flushInitial();
+      if (this.reloadRequested) {
+        this.reloadRequested = false;
+        void this.load(false);
+      }
       return;
     }
     this.notifyEntries();
