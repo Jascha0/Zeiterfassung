@@ -1,75 +1,61 @@
-import { useState } from 'react';
 import { ServicesProvider, type Services } from './app/ServicesContext';
 import { ToastProvider } from './app/ToastContext';
-import { AuthProvider, useAuth } from './auth/AuthContext';
-import type { AuthUser } from './auth/authTypes';
-import { OnlineIndicator } from './components/OnlineIndicator';
-import { VerificationBanner } from './components/VerificationBanner';
+import { monthKeyOfDateKey, toMonthKey } from './domain/routing';
+import { useRoute } from './hooks/useRoute';
 import { ThemeProvider } from './theme/ThemeContext';
-import { AccountView } from './views/AccountView';
-import { LoginView } from './views/LoginView';
+import { CalendarView } from './views/CalendarView';
+import { DayDetailView } from './views/DayDetailView';
+import { SettingsView } from './views/SettingsView';
 import { TimerView } from './views/TimerView';
 
-type View = 'timer' | 'account';
-
-function Shell(props: { user: AuthUser }): React.JSX.Element {
-  const { user } = props;
-  const { redirectError, clearRedirectError } = useAuth();
-  const [view, setView] = useState<View>('timer');
+function Shell(): React.JSX.Element {
+  const { route, navigate } = useRoute();
+  const calendarCurrent = route.kind === 'calendar' || route.kind === 'day';
 
   return (
     <div className="shell">
       <header className="app-header">
         <h1>Zeiterfassung</h1>
-        <OnlineIndicator />
         <nav aria-label="Hauptnavigation" className="main-nav">
           <button
             type="button"
-            aria-current={view === 'timer' ? 'page' : undefined}
-            onClick={() => setView('timer')}
+            aria-current={route.kind === 'timer' ? 'page' : undefined}
+            onClick={() => navigate({ kind: 'timer' })}
           >
             Timer
           </button>
           <button
             type="button"
-            aria-current={view === 'account' ? 'page' : undefined}
-            onClick={() => setView('account')}
+            aria-current={calendarCurrent ? 'page' : undefined}
+            onClick={() => navigate({ kind: 'calendar', monthKey: toMonthKey(Date.now()) })}
           >
-            Konto
+            Kalender
+          </button>
+          <button
+            type="button"
+            aria-current={route.kind === 'settings' ? 'page' : undefined}
+            onClick={() => navigate({ kind: 'settings' })}
+          >
+            Einstellungen
           </button>
         </nav>
       </header>
-      {redirectError !== null && redirectError.message !== '' && (
-        <div className="banner">
-          <p role="alert">{redirectError.message}</p>
-          <button type="button" className="button-link" onClick={clearRedirectError}>
-            Meldung schließen
-          </button>
-        </div>
+      {route.kind === 'timer' && <TimerView onOpenDay={(dateKey) => navigate({ kind: 'day', dateKey })} />}
+      {route.kind === 'calendar' && (
+        <CalendarView
+          monthKey={route.monthKey}
+          onSelectMonth={(monthKey) => navigate({ kind: 'calendar', monthKey })}
+          onOpenDay={(dateKey) => navigate({ kind: 'day', dateKey })}
+        />
       )}
-      <VerificationBanner user={user} />
-      {view === 'timer' ? <TimerView /> : <AccountView user={user} />}
+      {route.kind === 'day' && (
+        <DayDetailView
+          dateKey={route.dateKey}
+          onBack={() => navigate({ kind: 'calendar', monthKey: monthKeyOfDateKey(route.dateKey) })}
+        />
+      )}
+      {route.kind === 'settings' && <SettingsView />}
     </div>
-  );
-}
-
-function Gate(): React.JSX.Element {
-  const { user, loading } = useAuth();
-
-  if (loading) return <p className="loading">Lädt…</p>;
-
-  if (user === null) {
-    return (
-      <ThemeProvider>
-        <LoginView />
-      </ThemeProvider>
-    );
-  }
-
-  return (
-    <ThemeProvider key={user.uid}>
-      <Shell user={user} />
-    </ThemeProvider>
   );
 }
 
@@ -77,9 +63,9 @@ export default function App(props: { services: Services }): React.JSX.Element {
   return (
     <ServicesProvider services={props.services}>
       <ToastProvider>
-        <AuthProvider>
-          <Gate />
-        </AuthProvider>
+        <ThemeProvider>
+          <Shell />
+        </ThemeProvider>
       </ToastProvider>
     </ServicesProvider>
   );

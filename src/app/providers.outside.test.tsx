@@ -2,11 +2,10 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { useServices } from './ServicesContext';
 import { useToast } from './ToastContext';
-import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
 /**
- * Edge case 37: useServices/useAuth/useTheme/useToast must throw a descriptive error when used
+ * Edge case 37: useServices/useTheme/useToast must throw a descriptive error when used
  * outside their provider. renderHook mounts a minimal host component so the hook runs inside a
  * real render (a bare function call would hit React's "invalid hook call" guard instead of ours).
  */
@@ -17,10 +16,6 @@ describe('Hooks throw outside their provider (edge case 37)', () => {
 
   it('useToast throws', () => {
     expect(() => renderHook(() => useToast())).toThrow('useToast must be used within ToastProvider');
-  });
-
-  it('useAuth throws', () => {
-    expect(() => renderHook(() => useAuth())).toThrow('useAuth must be used within AuthProvider');
   });
 
   it('useTheme throws', () => {

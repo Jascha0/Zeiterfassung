@@ -7,7 +7,6 @@ import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
-import { FakeAuthService } from '../test/fakeAuthService';
 import type { Entry, EntryType } from '../domain/types';
 import { CalendarView } from './CalendarView';
 
@@ -18,7 +17,7 @@ function entry(id: string, type: EntryType, from: string, to: string): Entry {
 }
 
 function renderCalendar(store: LocalStore, onOpenDay: (dateKey: string) => void = vi.fn()) {
-  const services: Services = { auth: new FakeAuthService(), entries: store, settings: store };
+  const services: Services = { entries: store, settings: store };
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>

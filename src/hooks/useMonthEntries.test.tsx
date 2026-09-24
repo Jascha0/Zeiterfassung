@@ -6,7 +6,6 @@ import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
-import { FakeAuthService } from '../test/fakeAuthService';
 import type { Entry } from '../domain/types';
 import { useMonthEntries } from './useMonthEntries';
 
@@ -35,7 +34,7 @@ function MonthProbe(): React.JSX.Element {
 }
 
 function Probe(props: { store: LocalStore }): React.JSX.Element {
-  const services: Services = { auth: new FakeAuthService(), entries: props.store, settings: props.store };
+  const services: Services = { entries: props.store, settings: props.store };
   return (
     <ServicesProvider services={services}>
       <ToastProvider>

@@ -5,15 +5,14 @@ import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import type { LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
-import { FakeAuthService } from '../test/fakeAuthService';
 import { DayDetailView } from './DayDetailView';
 
 function renderDayDetail(store: LocalStore) {
-  const services: Services = { auth: new FakeAuthService(), entries: store, settings: store };
+  const services: Services = { entries: store, settings: store };
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>
-        <DayDetailView dateKey="2026-09-18" onBack={vi.fn()} onResolveOpenEntries={vi.fn()} />
+        <DayDetailView dateKey="2026-09-18" onBack={vi.fn()} />
       </ToastProvider>
     </ServicesProvider>,
   );

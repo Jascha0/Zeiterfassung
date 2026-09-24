@@ -17,7 +17,6 @@ import { EntryForm } from './EntryForm';
 export interface DayDetailViewProps {
   dateKey: string;
   onBack: () => void;
-  onResolveOpenEntries: () => void;
 }
 
 type EditingState = null | { mode: 'add' } | { mode: 'edit'; entry: Entry };
@@ -127,11 +126,6 @@ export function DayDetailView(props: DayDetailViewProps): React.JSX.Element {
                   );
                 })}
               </ul>
-            )}
-            {dayEntries.some((entry) => entry.end === null) && (
-              <button type="button" className="button-link" onClick={props.onResolveOpenEntries}>
-                Offene Einträge bereinigen
-              </button>
             )}
             {!isFuture && editing === null && (
               <div className="button-row">

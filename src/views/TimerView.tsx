@@ -3,6 +3,7 @@ import { useServices } from '../app/ServicesContext';
 import { useToast } from '../app/ToastContext';
 import { mapWriteError } from '../data/writeErrors';
 import { formatClock, formatDuration } from '../domain/format';
+import { toDateKey } from '../domain/routing';
 import {
   InvalidTimerActionError,
   allowedActions,
@@ -13,7 +14,7 @@ import {
 } from '../domain/timer';
 import { currentBreakMs, dailyTotals, entryDurationMs } from '../domain/totals';
 import type { Entry } from '../domain/types';
-import { hasMultipleOpenEntries, isLongRunningWork } from '../domain/warnings';
+import { findOpenEntries, hasMultipleOpenEntries, isLongRunningWork } from '../domain/warnings';
 import { useNow } from '../hooks/useNow';
 import { useTimerData } from '../hooks/useTimerData';
 
@@ -24,8 +25,7 @@ const ACTION_LABELS: Record<TimerAction, string> = {
   end: 'Arbeitstag beenden',
 };
 
-const MULTIPLE_OPEN_WARNING =
-  'Es gibt mehrere offene Einträge – vermutlich wurde der Timer offline auf mehreren Geräten gestartet. Aktionen betreffen den zuletzt gestarteten Eintrag. Eine Bereinigung ist in einer späteren Version möglich.';
+const MULTIPLE_OPEN_WARNING = 'Es gibt mehrere offene Einträge. Aktionen betreffen den zuletzt gestarteten Eintrag.';
 const LONG_RUNNING_WARNING =
   'Der aktuelle Arbeitsblock läuft seit mehr als 12 Stunden. Hast du vergessen, den Arbeitstag zu beenden?';
 
@@ -41,7 +41,11 @@ function entryText(entry: Entry, now: number): string {
   return `${type} ${formatClock(entry.start)} – ${end} (${formatDuration(entryDurationMs(entry, now))})`;
 }
 
-export function TimerView(): React.JSX.Element {
+export interface TimerViewProps {
+  onOpenDay: (dateKey: string) => void;
+}
+
+export function TimerView(props: TimerViewProps): React.JSX.Element {
   const { entries } = useServices();
   const { showToast } = useToast();
   const now = useNow(1000);
@@ -54,6 +58,8 @@ export function TimerView(): React.JSX.Element {
 
   const status = deriveTimerStatus(data.openEntries);
   const totals = dailyTotals(data.todayEntries, now, now);
+  const openNewestFirst = findOpenEntries(data.openEntries);
+  const oldestOpen: Entry | undefined = openNewestFirst[openNewestFirst.length - 1];
 
   const handleAction = (action: TimerAction) => {
     if (pending) return;
@@ -110,7 +116,18 @@ export function TimerView(): React.JSX.Element {
                 </button>
               ))}
             </div>
-            {hasMultipleOpenEntries(data.openEntries) && <p role="alert">{MULTIPLE_OPEN_WARNING}</p>}
+            {hasMultipleOpenEntries(data.openEntries) && oldestOpen !== undefined && (
+              <div role="alert">
+                <p>{MULTIPLE_OPEN_WARNING}</p>
+                <button
+                  type="button"
+                  className="button-link"
+                  onClick={() => props.onOpenDay(toDateKey(oldestOpen.start))}
+                >
+                  Ältesten offenen Eintrag öffnen
+                </button>
+              </div>
+            )}
             {isLongRunningWork(status.activeEntry, now) && <p role="alert">{LONG_RUNNING_WARNING}</p>}
           </>
         )}

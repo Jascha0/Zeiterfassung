@@ -4,8 +4,7 @@ export type Route =
   | { kind: 'timer' }
   | { kind: 'calendar'; monthKey: string }
   | { kind: 'day'; dateKey: string }
-  | { kind: 'openEntries' }
-  | { kind: 'account' };
+  | { kind: 'settings' };
 
 export const FALLBACK_ROUTE: Route = { kind: 'timer' };
 
@@ -60,8 +59,7 @@ export function parseHash(hash: string): Route {
   if (segments.length === 1) {
     const [only] = segments;
     if (only === '' || only === 'timer') return { kind: 'timer' };
-    if (only === 'offene-eintraege') return { kind: 'openEntries' };
-    if (only === 'konto') return { kind: 'account' };
+    if (only === 'einstellungen') return { kind: 'settings' };
     return FALLBACK_ROUTE;
   }
   if (segments.length === 2) {
@@ -80,9 +78,7 @@ export function routeToHash(route: Route): string {
       return `#/kalender/${route.monthKey}`;
     case 'day':
       return `#/tag/${route.dateKey}`;
-    case 'openEntries':
-      return '#/offene-eintraege';
-    case 'account':
-      return '#/konto';
+    case 'settings':
+      return '#/einstellungen';
   }
 }

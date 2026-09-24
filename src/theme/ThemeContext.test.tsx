@@ -8,7 +8,6 @@ import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
-import { FakeAuthService } from '../test/fakeAuthService';
 import { THEME_STORAGE_KEY } from './theme';
 import { ThemeProvider, useTheme } from './ThemeContext';
 
@@ -37,7 +36,7 @@ function ThemeProbe(props: { onRender?: (pref: string) => void }): React.JSX.Ele
 }
 
 function renderTheme(store: LocalStore, onRender?: (pref: string) => void) {
-  const services: Services = { auth: new FakeAuthService(), entries: store, settings: store };
+  const services: Services = { entries: store, settings: store };
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>

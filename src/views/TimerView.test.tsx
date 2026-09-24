@@ -6,17 +6,17 @@ import { ToastProvider } from '../app/ToastContext';
 import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, LocalStore } from '../data/localStore';
+import { toDateKey } from '../domain/routing';
 import { createTestStore } from '../test/createTestStore';
-import { FakeAuthService } from '../test/fakeAuthService';
 import type { TransitionPlan } from '../domain/timer';
 import { TimerView } from './TimerView';
 
-function renderTimer(store: LocalStore) {
-  const services: Services = { auth: new FakeAuthService(), entries: store, settings: store };
+function renderTimer(store: LocalStore, onOpenDay: (dateKey: string) => void = vi.fn()) {
+  const services: Services = { entries: store, settings: store };
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>
-        <TimerView />
+        <TimerView onOpenDay={onOpenDay} />
       </ToastProvider>
     </ServicesProvider>,
   );
@@ -226,5 +226,39 @@ describe('TimerView: midnight rollover (edge case 28, review fix)', () => {
       expect(workedAfter?.textContent).toBe('0:00:00');
     });
     expect(screen.getByText('Heute noch keine Einträge.')).toBeInTheDocument();
+  });
+});
+
+describe('TimerView: multiple open entries link to the oldest one (B6)', () => {
+  it('shows the new warning with a link to the oldest open entry, and drops the warning once it is closed', async () => {
+    const uiUser = userEvent.setup();
+    const now = Date.now();
+    const oldestStart = now - 3 * 60 * 60 * 1000;
+    const newerStart = now - 60 * 60 * 1000;
+    const { store } = createTestStore({
+      entries: [
+        { id: 'old', type: 'work', start: oldestStart, end: null, createdAt: oldestStart, updatedAt: oldestStart },
+        { id: 'new', type: 'work', start: newerStart, end: null, createdAt: newerStart, updatedAt: newerStart },
+      ],
+    });
+    const onOpenDay = vi.fn();
+    renderTimer(store, onOpenDay);
+
+    expect(
+      await screen.findByText('Es gibt mehrere offene Einträge. Aktionen betreffen den zuletzt gestarteten Eintrag.'),
+    ).toBeInTheDocument();
+    await uiUser.click(screen.getByRole('button', { name: 'Ältesten offenen Eintrag öffnen' }));
+    expect(onOpenDay).toHaveBeenCalledWith(toDateKey(oldestStart));
+
+    // Closing the oldest entry — what the day detail does — makes the warning disappear.
+    // React may print an "update was not wrapped in act(…)" warning here: the store notifies
+    // synchronously. That is expected noise; the waitFor below wraps in act itself. Do not "fix" it by
+    // weakening an assertion.
+    await store.updateEntry('old', { end: oldestStart + 60 * 60 * 1000, updatedAt: Date.now() });
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Es gibt mehrere offene Einträge. Aktionen betreffen den zuletzt gestarteten Eintrag.'),
+      ).not.toBeInTheDocument(),
+    );
   });
 });

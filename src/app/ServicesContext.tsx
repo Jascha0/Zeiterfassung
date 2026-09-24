@@ -1,9 +1,7 @@
 import { createContext, useContext } from 'react';
-import type { AuthService } from '../auth/authTypes';
 import type { EntryRepository, SettingsRepository } from '../data/repository';
 
 export interface Services {
-  auth: AuthService;
   entries: EntryRepository;
   settings: SettingsRepository;
 }
