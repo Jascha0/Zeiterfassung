@@ -6,7 +6,7 @@ import { ToastProvider } from '../app/ToastContext';
 import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, LocalStore } from '../data/localStore';
-import { toDateKey } from '../domain/routing';
+import { dayStartFromKey, toDateKey } from '../domain/routing';
 import { createTestStore } from '../test/createTestStore';
 import type { TransitionPlan } from '../domain/timer';
 import { TimerView } from './TimerView';
@@ -233,7 +233,7 @@ describe('TimerView: multiple open entries link to the oldest one (B6)', () => {
   it('shows the new warning with a link to the oldest open entry, and drops the warning once it is closed', async () => {
     const uiUser = userEvent.setup();
     const now = Date.now();
-    const oldestStart = now - 3 * 60 * 60 * 1000;
+    const oldestStart = dayStartFromKey(toDateKey(now)) - 2 * 60 * 60 * 1000;
     const newerStart = now - 60 * 60 * 1000;
     const { store } = createTestStore({
       entries: [

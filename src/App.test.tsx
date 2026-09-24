@@ -7,7 +7,7 @@ import { noopChannelFactory } from './data/channel';
 import { InMemoryAdapter } from './data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from './data/localStore';
 import { formatLongDate } from './domain/format';
-import { toDateKey, toMonthKey } from './domain/routing';
+import { dayStartFromKey, toDateKey, toMonthKey } from './domain/routing';
 import { createTestStore } from './test/createTestStore';
 
 function servicesOf(store: LocalStore): Services {
@@ -108,7 +108,7 @@ describe('App: the timer links to the oldest open entry (B6)', () => {
   it("routes to that entry's day detail", async () => {
     const uiUser = userEvent.setup();
     const now = Date.now();
-    const oldestStart = now - 3 * 60 * 60 * 1000;
+    const oldestStart = dayStartFromKey(toDateKey(now)) - 2 * 60 * 60 * 1000;
     const newerStart = now - 60 * 60 * 1000;
     renderApp(
       createTestStore({
