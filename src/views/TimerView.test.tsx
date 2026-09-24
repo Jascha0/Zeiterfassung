@@ -263,3 +263,23 @@ describe('TimerView: multiple open entries link to the oldest one (B6)', () => {
     );
   });
 });
+
+describe('TimerView: after the running entry has been closed (B22)', () => {
+  it('shows "Nicht gestartet" with Start available once the only open entry has an end', async () => {
+    const start = Date.now() - 2 * 60 * 60 * 1000;
+    const { store } = createTestStore({
+      entries: [{ id: 'w1', type: 'work', start, end: null, createdAt: start, updatedAt: start }],
+    });
+    renderTimer(store);
+    expect(await screen.findByText(/^Arbeitet seit/)).toBeInTheDocument();
+
+    // Exactly what the day detail does when its end is set: one updateEntry, never applyTransition.
+    // An "update was not wrapped in act(…)" warning here is expected noise (the store notifies
+    // synchronously); findByText below wraps in act. Do not silence it by changing an assertion.
+    await store.updateEntry('w1', { end: start + 60 * 60 * 1000, updatedAt: Date.now() });
+
+    expect(await screen.findByText('Nicht gestartet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
+  });
+});
