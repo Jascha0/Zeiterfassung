@@ -1,14 +1,14 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
-import { InMemoryRepository } from '../data/inMemoryRepository';
+import { InMemoryAdapter } from '../data/inMemoryAdapter';
+import { createLocalStore, type LocalStore } from '../data/localStore';
+import { createTestStore } from '../test/createTestStore';
 import { FakeAuthService } from '../test/fakeAuthService';
 import type { Entry, EntryType } from '../domain/types';
 import { CalendarView } from './CalendarView';
-
-const UID = 'u1';
 
 function entry(id: string, type: EntryType, from: string, to: string): Entry {
   const start = new Date(`2026-09-18T${from}:00+02:00`).getTime();
@@ -16,12 +16,12 @@ function entry(id: string, type: EntryType, from: string, to: string): Entry {
   return { id, type, start, end, createdAt: start, updatedAt: end };
 }
 
-function renderCalendar(repo: InMemoryRepository, onOpenDay: (dateKey: string) => void = vi.fn()) {
-  const services: Services = { auth: new FakeAuthService(), entries: repo, settings: repo };
+function renderCalendar(store: LocalStore, onOpenDay: (dateKey: string) => void = vi.fn()) {
+  const services: Services = { auth: new FakeAuthService(), entries: store, settings: store };
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>
-        <CalendarView uid={UID} monthKey="2026-09" onSelectMonth={vi.fn()} onOpenDay={onOpenDay} />
+        <CalendarView monthKey="2026-09" onSelectMonth={vi.fn()} onOpenDay={onOpenDay} />
       </ToastProvider>
     </ServicesProvider>,
   );
@@ -29,15 +29,17 @@ function renderCalendar(repo: InMemoryRepository, onOpenDay: (dateKey: string) =
 
 describe('CalendarView: month grid', () => {
   it('shows the month heading, the work-only month total and the day cell with its accessible name', async () => {
-    const repo = new InMemoryRepository();
-    repo.seedEntries(UID, [
-      entry('w1', 'work', '09:00', '10:00'),
-      entry('b1', 'break', '10:00', '10:30'),
-      entry('w2', 'work', '11:00', '12:00'),
-      entry('b2', 'break', '12:00', '13:00'),
-      entry('w3', 'work', '14:00', '15:00'),
-    ]);
-    renderCalendar(repo);
+    renderCalendar(
+      createTestStore({
+        entries: [
+          entry('w1', 'work', '09:00', '10:00'),
+          entry('b1', 'break', '10:00', '10:30'),
+          entry('w2', 'work', '11:00', '12:00'),
+          entry('b2', 'break', '12:00', '13:00'),
+          entry('w3', 'work', '14:00', '15:00'),
+        ],
+      }).store,
+    );
 
     expect(await screen.findByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
     expect(screen.getByText('Monatssumme 3:00:00')).toBeInTheDocument();
@@ -52,9 +54,7 @@ describe('CalendarView: keyboard', () => {
     vi.setSystemTime(new Date(2026, 8, 10, 12, 0));
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onOpenDay = vi.fn();
-    const repo = new InMemoryRepository();
-    repo.seedEntries(UID, []);
-    renderCalendar(repo, onOpenDay);
+    renderCalendar(createTestStore({ entries: [] }).store, onOpenDay);
     const grid = await screen.findByRole('grid', { name: 'Monatskalender' });
 
     expect(grid.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
@@ -74,5 +74,30 @@ describe('CalendarView: keyboard', () => {
     await user.keyboard('{Enter}');
     expect(onOpenDay).toHaveBeenCalledWith('2026-09-30');
     vi.useRealTimers();
+  });
+});
+
+describe('CalendarView: initial load (A7)', () => {
+  it('shows "Lädt…" and no grid while the initial load is pending', async () => {
+    const adapter = new InMemoryAdapter();
+    const release = adapter.holdNextLoad();
+    const store = createLocalStore({ adapter, navigator: null });
+    renderCalendar(store);
+    expect(screen.getByText('Lädt…')).toBeInTheDocument();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole('grid', { name: 'Monatskalender' })).toBeInTheDocument();
+  });
+
+  it('shows the load error and no grid when the initial load fails', async () => {
+    const adapter = new InMemoryAdapter();
+    adapter.failNextLoad(new Error('boom'));
+    const store = createLocalStore({ adapter, navigator: null });
+    renderCalendar(store);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Daten konnten nicht geladen werden.');
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
   });
 });

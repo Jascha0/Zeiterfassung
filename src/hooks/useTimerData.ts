@@ -21,12 +21,12 @@ interface SubscriptionState {
   error: string | null;
 }
 
-export function useTimerData(uid: string, now: number): TimerData {
+export function useTimerData(now: number): TimerData {
   const { entries } = useServices();
   const range = dayRange(now);
   const dayStart = range.start;
   const dayEnd = range.end;
-  const key = `${uid}|${dayStart}`;
+  const key = String(dayStart);
 
   const [state, setState] = useState<SubscriptionState>({ key, rangeEntries: null, openEntries: null, error: null });
 
@@ -37,17 +37,16 @@ export function useTimerData(uid: string, now: number): TimerData {
     const onError = () => update({ error: LOAD_ERROR_MESSAGE });
 
     const unsubscribeRange = entries.subscribeEntriesInRange(
-      uid,
       { start: dayStart, end: dayEnd },
       (rangeEntries) => update({ rangeEntries }),
       onError,
     );
-    const unsubscribeOpen = entries.subscribeOpenEntries(uid, (openEntries) => update({ openEntries }), onError);
+    const unsubscribeOpen = entries.subscribeOpenEntries((openEntries) => update({ openEntries }), onError);
     return () => {
       unsubscribeRange();
       unsubscribeOpen();
     };
-  }, [entries, uid, dayStart, dayEnd, key]);
+  }, [entries, dayStart, dayEnd, key]);
 
   const current = state.key === key ? state : null;
   const rangeEntries = current?.rangeEntries ?? null;

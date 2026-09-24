@@ -1,7 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-import { createFirebaseServices } from './firebase/app';
+import type { Services } from './app/ServicesContext';
+import { IndexedDbAdapter } from './data/indexedDbAdapter';
+import { createLocalStore } from './data/localStore';
+import { createFirebaseAuthService } from './firebase/app';
 import { readFirebaseConfig } from './firebase/config';
 import { ConfigMissing } from './views/ConfigMissing';
 import './styles.css';
@@ -16,9 +19,11 @@ if (config === null) {
     </StrictMode>,
   );
 } else {
+  const store = createLocalStore({ adapter: new IndexedDbAdapter() });
+  const services: Services = { auth: createFirebaseAuthService(config), entries: store, settings: store };
   root.render(
     <StrictMode>
-      <App services={createFirebaseServices(config)} />
+      <App services={services} />
     </StrictMode>,
   );
 }

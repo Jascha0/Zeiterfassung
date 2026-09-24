@@ -5,7 +5,7 @@ import App from './App';
 import type { Services } from './app/ServicesContext';
 import { AUTH_MESSAGES } from './auth/authErrors';
 import type { AuthUser } from './auth/authTypes';
-import { InMemoryRepository } from './data/inMemoryRepository';
+import { createTestStore } from './test/createTestStore';
 import { FakeAuthService } from './test/fakeAuthService';
 
 function user(overrides: Partial<AuthUser> = {}): AuthUser {
@@ -20,8 +20,8 @@ function user(overrides: Partial<AuthUser> = {}): AuthUser {
 }
 
 function makeServices(auth = new FakeAuthService()): Services {
-  const repo = new InMemoryRepository();
-  return { auth, entries: repo, settings: repo };
+  const store = createTestStore().store;
+  return { auth, entries: store, settings: store };
 }
 
 describe('App: auth gate (edge cases 3, 4)', () => {
@@ -66,17 +66,17 @@ describe('App: sign-out (edge case 5)', () => {
   it('returns to LoginView after sign-out, and timer listeners are cleaned up', async () => {
     const uiUser = userEvent.setup();
     const auth = new FakeAuthService();
-    const repo = new InMemoryRepository();
+    const { store } = createTestStore();
     auth.setUser(user());
-    render(<App services={{ auth, entries: repo, settings: repo }} />);
+    render(<App services={{ auth, entries: store, settings: store }} />);
     await screen.findByText('Arbeitszeit');
-    await waitFor(() => expect(repo.listenerCount()).toBeGreaterThan(0));
+    await waitFor(() => expect(store.listenerCount()).toBeGreaterThan(0));
 
     await uiUser.click(screen.getByRole('button', { name: 'Konto' }));
     await uiUser.click(screen.getByRole('button', { name: 'Abmelden' }));
 
     expect(await screen.findByRole('heading', { name: 'Anmeldung' })).toBeInTheDocument();
-    await waitFor(() => expect(repo.listenerCount()).toBe(0));
+    await waitFor(() => expect(store.listenerCount()).toBe(0));
   });
 });
 

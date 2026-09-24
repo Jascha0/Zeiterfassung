@@ -1,18 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
-import type { Services } from '../app/ServicesContext';
+import type { AuthService } from '../auth/authTypes';
 import { FirebaseAuthService } from '../auth/firebaseAuthService';
-import { FirestoreRepository } from '../data/firestoreRepository';
 import type { FirebaseWebConfig } from './config';
 
-export function createFirebaseServices(config: FirebaseWebConfig): Services {
+/** Deleted in 2R-B together with the rest of the auth stack (0035). */
+export function createFirebaseAuthService(config: FirebaseWebConfig): AuthService {
   const app = initializeApp(config);
   const auth = getAuth(app);
   auth.languageCode = 'de';
-  const db = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  });
-  const repo = new FirestoreRepository(db);
-  return { auth: new FirebaseAuthService(auth), entries: repo, settings: repo };
+  return new FirebaseAuthService(auth);
 }

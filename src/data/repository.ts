@@ -1,15 +1,13 @@
 import type { Entry, EntryType, NewEntry, TimeRange } from '../domain/types';
 import type { TransitionPlan } from '../domain/timer';
-import type { Unsubscribe } from '../auth/authTypes';
 import type { ThemePreference } from '../theme/theme';
+
+/** Cancels a subscription. Idempotent. Home of the data-side type since 2R-A; `src/auth/authTypes.ts`
+ *  keeps its own identical alias until 2R-B deletes the auth stack (0035). */
+export type Unsubscribe = () => void;
 
 export interface Preferences {
   theme: ThemePreference;
-}
-
-export interface SubscriptionMeta {
-  fromCache: boolean;
-  hasPendingWrites: boolean;
 }
 
 export interface EntryPatch {
@@ -21,28 +19,22 @@ export interface EntryPatch {
 }
 
 export interface EntryRepository {
-  /** Entries with range.start <= start < range.end, ordered by start asc.
-   *  onChange fires with the initial result and on every local (incl. pending/offline) or remote change. */
+  /** Entries with range.start <= start < range.end, ordered by start asc. onChange fires with the
+   *  initial result and on every later change; onError fires when the local data could not be loaded. */
   subscribeEntriesInRange(
-    uid: string,
     range: TimeRange,
-    onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
+    onChange: (entries: Entry[]) => void,
     onError: (error: Error) => void,
   ): Unsubscribe;
-  subscribeOpenEntries(
-    uid: string,
-    onChange: (entries: Entry[], meta: SubscriptionMeta) => void,
-    onError: (error: Error) => void,
-  ): Unsubscribe;
-  /** Resolves on server acknowledgement (may stay pending offline); rejects on rule rejection.
-   *  Closes, the optional creation and the deletions are written as one all-or-nothing batch. */
-  applyTransition(uid: string, plan: TransitionPlan): Promise<void>;
-  /** Resolves on server acknowledgement (may stay pending offline); rejects on rule rejection. */
-  createEntry(uid: string, entry: NewEntry): Promise<void>;
-  /** Resolves on server acknowledgement (may stay pending offline); rejects on rule rejection. */
-  updateEntry(uid: string, id: string, patch: EntryPatch): Promise<void>;
-  /** Resolves on server acknowledgement (may stay pending offline); rejects on rule rejection. */
-  deleteEntry(uid: string, id: string): Promise<void>;
+  subscribeOpenEntries(onChange: (entries: Entry[]) => void, onError: (error: Error) => void): Unsubscribe;
+  /** Resolves once the change is persisted locally; rejects if it could not be persisted, after the
+   *  in-memory state has been rolled back. Closes, the optional creation and the deletions are one
+   *  all-or-nothing batch (0028). */
+  applyTransition(plan: TransitionPlan): Promise<void>;
+  /** Resolves once persisted; rejects after rolling back the optimistic in-memory change. */
+  createEntry(entry: NewEntry): Promise<void>;
+  updateEntry(id: string, patch: EntryPatch): Promise<void>;
+  deleteEntry(id: string): Promise<void>;
 }
 
 export interface SettingsRepository {

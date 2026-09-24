@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import type { AuthUser } from '../auth/authTypes';
-import { InMemoryRepository } from '../data/inMemoryRepository';
+import { createTestStore } from '../test/createTestStore';
 import { FakeAuthService } from '../test/fakeAuthService';
 import { VerificationBanner } from './VerificationBanner';
 
@@ -19,8 +19,8 @@ function user(overrides: Partial<AuthUser> = {}): AuthUser {
 }
 
 function renderBanner(authUser: AuthUser, auth = new FakeAuthService()) {
-  const repo = new InMemoryRepository();
-  const services: Services = { auth, entries: repo, settings: repo };
+  const { store } = createTestStore();
+  const services: Services = { auth, entries: store, settings: store };
   render(
     <ServicesProvider services={services}>
       <VerificationBanner user={authUser} />

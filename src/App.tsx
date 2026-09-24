@@ -48,7 +48,7 @@ function Shell(props: { user: AuthUser }): React.JSX.Element {
         </div>
       )}
       <VerificationBanner user={user} />
-      {view === 'timer' ? <TimerView uid={user.uid} /> : <AccountView user={user} />}
+      {view === 'timer' ? <TimerView /> : <AccountView user={user} />}
     </div>
   );
 }

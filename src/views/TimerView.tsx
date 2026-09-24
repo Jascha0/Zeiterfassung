@@ -41,12 +41,11 @@ function entryText(entry: Entry, now: number): string {
   return `${type} ${formatClock(entry.start)} – ${end} (${formatDuration(entryDurationMs(entry, now))})`;
 }
 
-export function TimerView(props: { uid: string }): React.JSX.Element {
-  const { uid } = props;
+export function TimerView(): React.JSX.Element {
   const { entries } = useServices();
   const { showToast } = useToast();
   const now = useNow(1000);
-  const data = useTimerData(uid, now);
+  const data = useTimerData(now);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -66,7 +65,7 @@ export function TimerView(props: { uid: string }): React.JSX.Element {
       throw error;
     }
     setPending(true);
-    entries.applyTransition(uid, plan).catch((error: unknown) => {
+    entries.applyTransition(plan).catch((error: unknown) => {
       showToast(mapWriteError(error));
       setPending(false);
     });

@@ -15,7 +15,6 @@ import { useNow } from '../hooks/useNow';
 import { EntryForm } from './EntryForm';
 
 export interface DayDetailViewProps {
-  uid: string;
   dateKey: string;
   onBack: () => void;
   onResolveOpenEntries: () => void;
@@ -31,7 +30,7 @@ export function DayDetailView(props: DayDetailViewProps): React.JSX.Element {
   const dayStart = dayStartFromKey(props.dateKey);
   const monthStart = monthStartFromKey(monthKeyOfDateKey(props.dateKey));
   const now = useNow(1000);
-  const data = useMonthEntries(props.uid, monthStart);
+  const data = useMonthEntries(monthStart);
   const dayEntries = entriesOfDay(data.entries, dayStart);
   const comparison = comparisonEntriesForDay(data.entries, dayStart);
   const totals = dailyTotals(data.entries, dayStart, now);
@@ -67,14 +66,14 @@ export function DayDetailView(props: DayDetailViewProps): React.JSX.Element {
     const timestamp = Date.now();
     runWrite(
       state.mode === 'add'
-        ? entries.createEntry(props.uid, {
+        ? entries.createEntry({
             type: values.type,
             start: values.start,
             end: values.end,
             createdAt: timestamp,
             updatedAt: timestamp,
           })
-        : entries.updateEntry(props.uid, state.entry.id, {
+        : entries.updateEntry(state.entry.id, {
             type: values.type,
             start: values.start,
             end: values.end,
@@ -86,7 +85,7 @@ export function DayDetailView(props: DayDetailViewProps): React.JSX.Element {
   const handleDelete = (entry: Entry) => {
     setDeleting(null);
     if (submitting) return;
-    runWrite(entries.deleteEntry(props.uid, entry.id));
+    runWrite(entries.deleteEntry(entry.id));
   };
 
   return (
@@ -103,11 +102,6 @@ export function DayDetailView(props: DayDetailViewProps): React.JSX.Element {
           data.error === null && <p>Lädt…</p>
         ) : (
           <>
-            {data.incomplete && (
-              <p role="status" className="month-notice">
-                Offline – Daten möglicherweise unvollständig
-              </p>
-            )}
             <p>{`Gearbeitet ${formatDuration(totals.workMs)}`}</p>
             <p>{`Pausen ${formatDuration(totals.breakMs)}`}</p>
             {dayEntries.length === 0 ? (

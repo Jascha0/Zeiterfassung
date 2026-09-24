@@ -8,7 +8,6 @@ import { useMonthEntries } from '../hooks/useMonthEntries';
 import { useNow } from '../hooks/useNow';
 
 export interface CalendarViewProps {
-  uid: string;
   monthKey: string;
   onSelectMonth: (monthKey: string) => void;
   onOpenDay: (dateKey: string) => void;
@@ -45,7 +44,7 @@ function dayMarkerDots(day: MonthDay): React.JSX.Element {
 export function CalendarView(props: CalendarViewProps): React.JSX.Element {
   const monthStart = monthStartFromKey(props.monthKey);
   const now = useNow(1000);
-  const data = useMonthEntries(props.uid, monthStart);
+  const data = useMonthEntries(monthStart);
   const summary = buildMonthSummary(monthStart, data.entries, now);
   const weeks = buildCalendarWeeks(monthStart);
   const byDateKey = new Map(summary.days.map((day) => [day.dateKey, day]));
@@ -138,11 +137,6 @@ export function CalendarView(props: CalendarViewProps): React.JSX.Element {
           data.error === null && <p>Lädt…</p>
         ) : (
           <>
-            {data.incomplete && (
-              <p role="status" className="month-notice">
-                Offline – Daten möglicherweise unvollständig
-              </p>
-            )}
             <div
               role="grid"
               aria-label="Monatskalender"

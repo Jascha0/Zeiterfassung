@@ -5,7 +5,7 @@ import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import { AuthError } from '../auth/authTypes';
 import type { AuthUser } from '../auth/authTypes';
-import { InMemoryRepository } from '../data/inMemoryRepository';
+import { createTestStore } from '../test/createTestStore';
 import { FakeAuthService } from '../test/fakeAuthService';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { AccountView } from './AccountView';
@@ -22,8 +22,8 @@ function user(overrides: Partial<AuthUser> = {}): AuthUser {
 }
 
 function renderAccountView(authUser: AuthUser, auth = new FakeAuthService()) {
-  const repo = new InMemoryRepository();
-  const services: Services = { auth, entries: repo, settings: repo };
+  const { store } = createTestStore();
+  const services: Services = { auth, entries: store, settings: store };
   render(
     <ServicesProvider services={services}>
       <ToastProvider>
@@ -33,7 +33,7 @@ function renderAccountView(authUser: AuthUser, auth = new FakeAuthService()) {
       </ToastProvider>
     </ServicesProvider>,
   );
-  return { auth, repo };
+  return { auth, store };
 }
 
 describe('AccountView: linking buttons (edge case 13/14)', () => {
@@ -104,13 +104,13 @@ describe('AccountView: linking buttons (edge case 13/14)', () => {
 describe('AccountView: theme', () => {
   it('reflects and changes the theme preference via radio buttons', async () => {
     const uiUser = userEvent.setup();
-    const { repo } = renderAccountView(user());
+    const { store } = renderAccountView(user());
     const dark = screen.getByRole('radio', { name: 'Dunkel' });
     expect(dark).not.toBeChecked();
     await uiUser.click(dark);
     expect(dark).toBeChecked();
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
-    await waitFor(() => expect(repo.getEntries).toBeDefined()); // sanity: repo usable
+    await waitFor(() => expect(store.getEntries).toBeDefined()); // sanity: store usable
   });
 });
 

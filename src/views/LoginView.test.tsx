@@ -4,13 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { AuthProvider } from '../auth/AuthContext';
 import { AuthError } from '../auth/authTypes';
-import { InMemoryRepository } from '../data/inMemoryRepository';
+import { createTestStore } from '../test/createTestStore';
 import { FakeAuthService } from '../test/fakeAuthService';
 import { LoginView } from './LoginView';
 
 function renderLoginView(auth = new FakeAuthService()) {
-  const repo = new InMemoryRepository();
-  const services: Services = { auth, entries: repo, settings: repo };
+  const { store } = createTestStore();
+  const services: Services = { auth, entries: store, settings: store };
   render(
     <ServicesProvider services={services}>
       <AuthProvider>

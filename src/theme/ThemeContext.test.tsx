@@ -4,7 +4,8 @@ import { useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
-import { InMemoryRepository } from '../data/inMemoryRepository';
+import type { LocalStore } from '../data/localStore';
+import { createTestStore } from '../test/createTestStore';
 import { FakeAuthService } from '../test/fakeAuthService';
 import { THEME_STORAGE_KEY } from './theme';
 import { ThemeProvider, useTheme } from './ThemeContext';
@@ -35,8 +36,8 @@ function ThemeProbe(props: { onRender?: (pref: string) => void }): React.JSX.Ele
   );
 }
 
-function renderTheme(repo: InMemoryRepository, onRender?: (pref: string) => void) {
-  const services: Services = { auth: new FakeAuthService(), entries: repo, settings: repo };
+function renderTheme(store: LocalStore, onRender?: (pref: string) => void) {
+  const services: Services = { auth: new FakeAuthService(), entries: store, settings: store };
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>
@@ -55,9 +56,8 @@ beforeEach(() => {
 describe('ThemeProvider: remote adoption (edge case 33, review fix)', () => {
   it('adopts a remote preference that differs from local, and stores it locally', async () => {
     localStorage.setItem(THEME_STORAGE_KEY, 'light');
-    const repo = new InMemoryRepository();
-    repo.seedPreferences(UID, { theme: 'dark' });
-    renderTheme(repo);
+    const { store } = createTestStore({ preferences: { theme: 'dark' } });
+    renderTheme(store);
 
     await waitFor(() => expect(screen.getByTestId('preference')).toHaveTextContent('dark'));
     expect(screen.getByTestId('resolved')).toHaveTextContent('dark');
@@ -66,12 +66,13 @@ describe('ThemeProvider: remote adoption (edge case 33, review fix)', () => {
 
   it('keeps the local preference and does not save when the remote preference is null', async () => {
     localStorage.setItem(THEME_STORAGE_KEY, 'dark');
-    const repo = new InMemoryRepository();
-    const saveSpy = vi.spyOn(repo, 'savePreferences');
-    renderTheme(repo);
+    const { store } = createTestStore();
+    const saveSpy = vi.spyOn(store, 'savePreferences');
+    renderTheme(store);
 
     // Let the (null) initial preferences snapshot arrive.
     await act(async () => {
+      await store.whenReady();
       await flushMicrotasks();
     });
     expect(screen.getByTestId('preference')).toHaveTextContent('dark');
@@ -80,9 +81,9 @@ describe('ThemeProvider: remote adoption (edge case 33, review fix)', () => {
 
   it('does not flip the preference when the remote echo of our own save arrives', async () => {
     const seen: string[] = [];
-    const repo = new InMemoryRepository();
+    const { store } = createTestStore();
     const user = userEvent.setup();
-    renderTheme(repo, (pref) => seen.push(pref));
+    renderTheme(store, (pref) => seen.push(pref));
 
     await waitFor(() => expect(seen).toContain('system'));
     await user.click(screen.getByRole('button', { name: 'set dark' }));
@@ -97,12 +98,12 @@ describe('ThemeProvider: remote adoption (edge case 33, review fix)', () => {
   });
 
   it('shows a toast when saving the preference fails', async () => {
-    const repo = new InMemoryRepository();
+    const { store, adapter } = createTestStore();
     const user = userEvent.setup();
-    renderTheme(repo);
+    renderTheme(store);
     await screen.findByTestId('preference');
 
-    repo.failNextWrite(Object.assign(new Error('boom'), { code: 'permission-denied' }));
+    adapter.failNextApply(Object.assign(new Error('boom'), { name: 'AbortError' }));
     await user.click(screen.getByRole('button', { name: 'set dark' }));
 
     const toastRegion = screen.getByRole('status');
