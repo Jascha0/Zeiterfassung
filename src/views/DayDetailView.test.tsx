@@ -353,3 +353,60 @@ describe('DayDetailView: Escape precedence and failing writes', () => {
     expect(screen.getByText('Keine Einträge an diesem Tag.')).toBeInTheDocument();
   });
 });
+
+describe('DayDetailView: a pending and a rejected delete (edge cases 14, 16)', () => {
+  it('disables every action while the delete is in flight and re-enables them when it settles', async () => {
+    const uiUser = userEvent.setup();
+    const yesterday = dateKeyDaysFromToday(-1);
+    const { store, adapter } = createTestStore({
+      entries: [entryOn('w1', 'work', yesterday, 9, 12), entryOn('b1', 'break', yesterday, 12, 13)],
+    });
+    renderDayDetail(store, yesterday);
+
+    await screen.findByText(/Pause 12:00–13:00/);
+    const breakItem = screen.getByText(/Pause 12:00–13:00/).closest('li') as HTMLElement;
+    const release = adapter.holdNextApply();
+    await uiUser.click(within(breakItem).getByRole('button', { name: 'Löschen' }));
+    await uiUser.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Löschen' }));
+
+    // The optimistic delete already removed the break, so the work entry is the only one left.
+    const workItem = screen.getByText(/Arbeit 09:00–12:00/).closest('li') as HTMLElement;
+    expect(within(workItem).getByRole('button', { name: 'Bearbeiten' })).toBeDisabled();
+    expect(within(workItem).getByRole('button', { name: 'Löschen' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Eintrag hinzufügen' })).toBeDisabled();
+
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Eintrag hinzufügen' })).toBeEnabled());
+    expect(within(workItem).getByRole('button', { name: 'Bearbeiten' })).toBeEnabled();
+    expect(screen.queryByText(/Pause 12:00–13:00/)).not.toBeInTheDocument();
+    expect(adapter.storedEntries()).toHaveLength(1);
+  });
+
+  it('shows the storage-full toast and keeps the entry when the delete is rejected', async () => {
+    const uiUser = userEvent.setup();
+    const yesterday = dateKeyDaysFromToday(-1);
+    const { store, adapter } = createTestStore({ entries: [entryOn('w1', 'work', yesterday, 9, 12)] });
+    renderDayDetail(store, yesterday);
+
+    await screen.findByText(/Arbeit 09:00–12:00/);
+    const workItem = screen.getByText(/Arbeit 09:00–12:00/).closest('li') as HTMLElement;
+    adapter.failNextApply(Object.assign(new Error('full'), { name: 'QuotaExceededError' }));
+    await uiUser.click(within(workItem).getByRole('button', { name: 'Löschen' }));
+    await uiUser.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Löschen' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Der Speicher ist voll. Die Änderung wurde nicht gespeichert.',
+      ),
+    );
+    // The store rolled the optimistic delete back: entry, total and stored data are unchanged.
+    expect(screen.getByText(/Arbeit 09:00–12:00/)).toBeInTheDocument();
+    expect(screen.getByText('Gearbeitet 3:00:00')).toBeInTheDocument();
+    expect(adapter.storedEntries()).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Eintrag hinzufügen' })).toBeEnabled();
+  });
+});
