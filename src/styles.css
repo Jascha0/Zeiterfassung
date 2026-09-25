@@ -117,11 +117,6 @@ button:disabled {
   font-weight: 600;
 }
 
-.button-google {
-  width: 100%;
-  margin-top: 0.75rem;
-}
-
 .button-link {
   background: none;
   border: none;
@@ -184,11 +179,6 @@ select {
   gap: 1rem;
 }
 
-.page.narrow {
-  max-width: 28rem;
-  padding-top: 2rem;
-}
-
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -201,11 +191,6 @@ select {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
-}
-
-.mode-switch {
-  margin-top: 0.75rem;
-  justify-content: space-between;
 }
 
 .app-header {
@@ -235,33 +220,6 @@ select {
   color: var(--color-on-primary);
 }
 
-.online-indicator {
-  font-size: 0.875rem;
-  font-weight: 600;
-  padding: 0.125rem 0.625rem;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  color: var(--color-success-text);
-}
-
-.online-indicator[data-online='false'] {
-  background: var(--color-warning-bg);
-  color: var(--color-warning-text);
-}
-
-.banner {
-  max-width: 44rem;
-  margin: 1rem auto 0;
-  padding: 0.75rem 1rem;
-  border-radius: 0.75rem;
-  background: var(--color-warning-bg);
-  color: var(--color-warning-text);
-}
-
-.banner [role='status'] {
-  margin: 0.5rem 0 0;
-}
-
 .timer-status {
   font-size: 1.25rem;
   font-weight: 600;
@@ -274,8 +232,7 @@ select {
   margin: 0 0 1rem;
 }
 
-.totals dt,
-.account-info dt {
+.totals dt {
   color: var(--color-text-muted);
   font-size: 0.875rem;
 }
@@ -285,10 +242,6 @@ select {
   font-size: 1.75rem;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-}
-
-.account-info dd {
-  margin: 0 0 0.5rem;
 }
 
 .timer-actions {
@@ -303,10 +256,6 @@ select {
   margin: 0;
   padding-left: 1.25rem;
   font-variant-numeric: tabular-nums;
-}
-
-.method {
-  margin-bottom: 0.75rem;
 }
 
 .theme-options {
