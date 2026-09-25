@@ -1,9 +1,22 @@
 import type { TransitionPlan } from '../domain/timer';
 import type { Entry, NewEntry, TimeRange } from '../domain/types';
 import { createDefaultChannel, type ChannelFactory, type StoreChannel } from './channel'; // task 8
-import { STORE_FORMAT_VERSION, type PersistenceAdapter, type StoreChanges } from './persistence';
+import {
+  STORE_FORMAT_VERSION,
+  type BackupData,
+  type PersistenceAdapter,
+  type StoreChanges,
+  type StoredData,
+} from './persistence';
 import { requestPersistentStorage, type StorageCapableNavigator } from './persistentStorage';
-import type { EntryPatch, EntryRepository, Preferences, SettingsRepository, Unsubscribe } from './repository';
+import type {
+  BackupRepository,
+  EntryPatch,
+  EntryRepository,
+  Preferences,
+  SettingsRepository,
+  Unsubscribe,
+} from './repository';
 
 interface EntrySubscription {
   kind: 'entries';
@@ -51,7 +64,7 @@ function toError(value: unknown): Error {
 /** Authoritative in-memory state plus a persistence adapter (0033). Every read is served from memory;
  *  every write mutates memory, notifies subscribers and is persisted — a failed persist is rolled back
  *  completely and the returned promise rejects. */
-export class LocalStore implements EntryRepository, SettingsRepository {
+export class LocalStore implements EntryRepository, SettingsRepository, BackupRepository {
   private readonly adapter: PersistenceAdapter;
   private readonly makeId: () => string;
   private readonly channel: StoreChannel; // task 8
@@ -225,6 +238,33 @@ export class LocalStore implements EntryRepository, SettingsRepository {
     });
   }
 
+  /** Guarded full read (0053). Copies only — the caller can never reach the store's own objects
+   *  (2R-A finding 6 stays out of reach). */
+  readAll(): StoredData | null {
+    if (this.state !== 'ready') return null;
+    return { entries: this.getEntries(), preferences: this.getPreferences(), formatVersion: this.formatVersion };
+  }
+
+  replaceAll(data: BackupData): Promise<void> {
+    return this.write(() => {
+      const entries = data.entries.map((entry) => ({ ...entry }));
+      const preferences = data.preferences === null ? null : { theme: data.preferences.theme };
+      return this.persistWith(
+        () => this.adapter.replaceAll({ entries, preferences }),
+        () => {
+          // Persisted first, so there is nothing to roll back: memory is derived from what storage took.
+          this.entries = new Map(entries.map((entry) => [entry.id, { ...entry }]));
+          this.preferences = preferences === null ? null : { ...preferences };
+          this.formatVersion = STORE_FORMAT_VERSION;
+          this.sorted = null;
+          this.notifyEntries();
+          this.notifyPreferences();
+        },
+        () => undefined,
+      );
+    });
+  }
+
   /** Runs the mutation immediately once the store is loaded. Before that it waits for the initial load
    *  (so nothing is written that the load would overwrite); if the load failed, it rejects. */
   private write(mutate: () => Promise<void>): Promise<void> {
@@ -233,23 +273,40 @@ export class LocalStore implements EntryRepository, SettingsRepository {
     return this.ready.then(() => this.write(mutate));
   }
 
-  private persist(changes: StoreChanges, rollback: () => void): Promise<void> {
+  /** One adapter write with the store's full bookkeeping: serialised through persistChain, counted in
+   *  pendingWrites so a cross-tab reload cannot interleave (:278, :295), settled afterwards, announced on
+   *  the channel. onPersisted runs after the adapter resolved; onFailed after it rejected. */
+  private persistWith(run: () => Promise<void>, onPersisted: () => void, onFailed: () => void): Promise<void> {
     this.pendingWrites += 1;
-    const applied = this.persistChain.then(() => this.adapter.apply(changes));
+    const applied = this.persistChain.then(run);
     this.persistChain = applied.then(
       () => undefined,
       () => undefined,
     );
     return applied.then(
       () => {
+        onPersisted();
         this.settleWrite();
-        this.channel.post({ origin: this.instanceId }); // task 8
+        try {
+          this.channel.post({ origin: this.instanceId }); // task 8
+        } catch {
+          // Best effort: a failed cross-tab notification never turns a persisted write into a rejected
+          // one (0054, 2R-A finding 3). The write's promise reflects persistence only.
+        }
       },
       (error: unknown) => {
-        rollback();
+        onFailed();
         this.settleWrite();
         throw error;
       },
+    );
+  }
+
+  private persist(changes: StoreChanges, rollback: () => void): Promise<void> {
+    return this.persistWith(
+      () => this.adapter.apply(changes),
+      () => undefined,
+      rollback,
     );
   }
 

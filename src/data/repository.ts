@@ -1,9 +1,10 @@
 import type { Entry, EntryType, NewEntry, TimeRange } from '../domain/types';
 import type { TransitionPlan } from '../domain/timer';
+import type { BackupData, StoredData } from './persistence';
 import type { ThemePreference } from '../theme/theme';
 
-/** Cancels a subscription. Idempotent. Home of the data-side type since 2R-A; `src/auth/authTypes.ts`
- *  keeps its own identical alias until 2R-B deletes the auth stack (0035). */
+/** Cancels a subscription. Idempotent. The data layer's own alias; the auth stack that had a second
+ *  identical one was deleted in 2R-B (0035). */
 export type Unsubscribe = () => void;
 
 export interface Preferences {
@@ -40,4 +41,18 @@ export interface EntryRepository {
 export interface SettingsRepository {
   subscribePreferences(onChange: (prefs: Preferences | null) => void, onError: (error: Error) => void): Unsubscribe;
   savePreferences(prefs: Preferences): Promise<void>;
+}
+
+/** The backup's view of the store (0053). Type-only import of the persistence shapes; nothing here
+ *  reaches the adapter directly. */
+export interface BackupRepository {
+  /** Everything the backup needs: the format version plus copies of every entry and of the
+   *  preferences. Returns **null** unless the initial load succeeded — an export written while the
+   *  load is still running or after it failed would be a file the user wrongly trusts (0053).
+   *  Synchronous: the store answers from memory. Never returns an empty data set to mean "refused". */
+  readAll(): StoredData | null;
+  /** Replaces the whole data set atomically: persists first, then swaps memory and notifies entry and
+   *  preference subscribers. Rejects without changing anything if the write failed (0053).
+   *  `data.preferences === null` clears the stored preferences (0059). */
+  replaceAll(data: BackupData): Promise<void>;
 }

@@ -253,6 +253,27 @@ describe('LocalStore over IndexedDB: load timing (A12)', () => {
   );
 });
 
+describe('LocalStore over IndexedDB: replaceAll (C13)', () => {
+  it('replaces every entry and deletes the preferences, readable through a fresh store', async () => {
+    const name = dbName();
+    const first = storeOn(name);
+    await first.whenReady();
+    await first.createEntry({ type: 'work', start: 1000, end: 2000, createdAt: 1000, updatedAt: 1000 });
+    await first.createEntry({ type: 'break', start: 3000, end: null, createdAt: 3000, updatedAt: 3000 });
+    await first.savePreferences({ theme: 'dark' });
+
+    const imported: Entry = { id: 'imp-1', type: 'work', start: 5000, end: 6000, createdAt: 5000, updatedAt: 5000 };
+    await first.replaceAll({ entries: [imported], preferences: null });
+    first.close();
+
+    const second = storeOn(name);
+    await second.whenReady();
+    expect(second.getEntries()).toEqual([imported]);
+    expect(second.getPreferences()).toBeNull();
+    expect(second.getFormatVersion()).toBe(STORE_FORMAT_VERSION);
+  });
+});
+
 describe('LocalStore over IndexedDB: malformed stored records (edge cases 4 and 5)', () => {
   it('skips every junk record and the junk preferences, loads the valid entries and reports no error', async () => {
     const name = dbName();
