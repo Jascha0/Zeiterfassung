@@ -1,6 +1,6 @@
 # 0039 — New slice order: local rebuild (2R) → backup (2E) → projects (3) → CSV/PDF report (4)
 
-- **Status:** accepted
+- **Status:** superseded by [0052](0052-slice-order-after-the-local-rebuild.md)
 - **Date:** 2026-09-22
 - **Decided by:** user
 - **Slice:** slice 2R (local rebuild)

@@ -1,6 +1,6 @@
 # 0013 — No target hours or overtime balance in v1
 
-- **Status:** accepted
+- **Status:** superseded by [0047](0047-target-hours-and-overtime-balance.md)
 - **Date:** 2026-09-16
 - **Decided by:** user
 - **Slice:** slice 1 (foundation, auth, timer)

@@ -1,6 +1,6 @@
 # 0046 — The settings view states in plain German that the data lives only in this browser, until the backup exists
 
-- **Status:** accepted
+- **Status:** superseded by [0057](0057-backup-section-in-the-settings-view.md)
 - **Date:** 2026-09-24
 - **Decided by:** architect
 - **Slice:** slice 2R-B (the shell)
