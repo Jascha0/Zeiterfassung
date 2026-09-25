@@ -119,4 +119,80 @@ describe('InMemoryAdapter', () => {
     expect(adapter.loadCount).toBe(2);
     expect(adapter.applyCount).toBe(2);
   });
+
+  it('replaceAll replaces every entry and the preferences, and loadAll agrees', async () => {
+    const adapter = new InMemoryAdapter({ entries: [OPEN], preferences: { theme: 'light' } });
+    await adapter.replaceAll({ entries: [LATER, EARLIER], preferences: { theme: 'dark' } });
+
+    expect(adapter.storedEntries()).toEqual([EARLIER, LATER]);
+    expect(adapter.storedEntries().some((entry) => entry.id === OPEN.id)).toBe(false);
+    expect(adapter.storedPreferences()).toEqual({ theme: 'dark' });
+
+    const data = await adapter.loadAll();
+    expect(data.entries).toEqual([EARLIER, LATER]);
+    expect(data.preferences).toEqual({ theme: 'dark' });
+    expect(data.formatVersion).toBe(STORE_FORMAT_VERSION);
+  });
+
+  it('replaceAll with an empty set and null preferences clears both', async () => {
+    const adapter = new InMemoryAdapter({ entries: [OPEN, EARLIER], preferences: { theme: 'dark' } });
+    await adapter.replaceAll({ entries: [], preferences: null });
+
+    expect(adapter.storedEntries()).toEqual([]);
+    expect(adapter.storedPreferences()).toBeNull();
+  });
+
+  it('failNextReplaceAll rejects exactly the next replaceAll and changes nothing', async () => {
+    const adapter = new InMemoryAdapter({ entries: [OPEN], preferences: { theme: 'light' } });
+    const boom = new Error('boom');
+    adapter.failNextReplaceAll(boom);
+
+    await expect(adapter.replaceAll({ entries: [EARLIER], preferences: null })).rejects.toBe(boom);
+    expect(adapter.storedEntries()).toEqual([OPEN]);
+    expect(adapter.storedPreferences()).toEqual({ theme: 'light' });
+
+    await adapter.replaceAll({ entries: [EARLIER], preferences: { theme: 'dark' } });
+    expect(adapter.storedEntries()).toEqual([EARLIER]);
+    expect(adapter.storedPreferences()).toEqual({ theme: 'dark' });
+  });
+
+  it('holdNextReplaceAll keeps the promise unsettled and the data untouched until release', async () => {
+    const adapter = new InMemoryAdapter({ entries: [OPEN], preferences: { theme: 'light' } });
+    const release = adapter.holdNextReplaceAll();
+    const pending = adapter.replaceAll({ entries: [EARLIER], preferences: null }).then(() => 'replaceAll' as const);
+    await flushMicrotasks();
+
+    // The marker is already resolved and `pending` is subscribed to first, so a replaceAll that did not
+    // hold would win this race: only a genuinely pending replaceAll lets the marker win.
+    expect(await Promise.race([pending, Promise.resolve('marker' as const)])).toBe('marker');
+    expect(adapter.storedEntries()).toEqual([OPEN]);
+    expect(adapter.storedPreferences()).toEqual({ theme: 'light' });
+
+    release();
+    expect(await pending).toBe('replaceAll');
+    expect(adapter.storedEntries()).toEqual([EARLIER]);
+    expect(adapter.storedPreferences()).toBeNull();
+  });
+
+  it('counts every replaceAll and leaves applyCount alone', async () => {
+    const adapter = new InMemoryAdapter();
+    expect(adapter.replaceAllCount).toBe(0);
+
+    await adapter.replaceAll({ entries: [OPEN], preferences: null });
+    await adapter.replaceAll({ entries: [], preferences: { theme: 'dark' } });
+
+    expect(adapter.replaceAllCount).toBe(2);
+    expect(adapter.applyCount).toBe(0);
+  });
+
+  it('stores copies, so mutating an entry after replaceAll does not change the adapter', async () => {
+    const adapter = new InMemoryAdapter();
+    const mutable: Entry = { ...LATER };
+    await adapter.replaceAll({ entries: [mutable], preferences: null });
+
+    mutable.start = 9999;
+    mutable.end = null;
+
+    expect(adapter.storedEntries()).toEqual([LATER]);
+  });
 });

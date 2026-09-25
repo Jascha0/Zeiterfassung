@@ -1,5 +1,11 @@
 import { parseStoredEntry, parseStoredPreferences, toStoredEntry } from './entryMapping';
-import { STORE_FORMAT_VERSION, type PersistenceAdapter, type StoreChanges, type StoredData } from './persistence';
+import {
+  STORE_FORMAT_VERSION,
+  type BackupData,
+  type PersistenceAdapter,
+  type StoreChanges,
+  type StoredData,
+} from './persistence';
 import type { Entry } from '../domain/types';
 
 export const DB_NAME = 'zeiterfassung';
@@ -79,6 +85,34 @@ export class IndexedDbAdapter implements PersistenceAdapter {
         if (changes.preferences !== null) {
           tx.objectStore(META_STORE).put({ theme: changes.preferences.theme }, PREFERENCES_KEY);
         }
+        if (this.onWriteStaged !== undefined) this.onWriteStaged(tx);
+      } catch (error) {
+        injected = error;
+        try {
+          tx.abort();
+        } catch {
+          // The hook aborted the transaction itself.
+        }
+      }
+    });
+  }
+
+  async replaceAll(data: BackupData): Promise<void> {
+    const db = await this.open();
+    return new Promise<void>((resolve, reject) => {
+      let injected: unknown = null;
+      const tx = db.transaction([ENTRIES_STORE, META_STORE], 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(injected ?? tx.error ?? new Error('Schreiben in IndexedDB fehlgeschlagen.'));
+      tx.onabort = () => reject(injected ?? tx.error ?? new Error('Schreiben in IndexedDB abgebrochen.'));
+      try {
+        const entries = tx.objectStore(ENTRIES_STORE);
+        entries.clear();
+        for (const entry of data.entries) entries.put(toStoredEntry(entry));
+        const meta = tx.objectStore(META_STORE);
+        if (data.preferences === null) meta.delete(PREFERENCES_KEY);
+        else meta.put({ theme: data.preferences.theme }, PREFERENCES_KEY);
+        meta.put(STORE_FORMAT_VERSION, FORMAT_VERSION_KEY);
         if (this.onWriteStaged !== undefined) this.onWriteStaged(tx);
       } catch (error) {
         injected = error;

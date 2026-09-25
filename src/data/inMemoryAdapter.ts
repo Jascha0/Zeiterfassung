@@ -1,5 +1,11 @@
 import type { Entry } from '../domain/types';
-import { STORE_FORMAT_VERSION, type PersistenceAdapter, type StoreChanges, type StoredData } from './persistence';
+import {
+  STORE_FORMAT_VERSION,
+  type BackupData,
+  type PersistenceAdapter,
+  type StoreChanges,
+  type StoredData,
+} from './persistence';
 import type { Preferences } from './repository';
 
 export interface InMemoryAdapterSeed {
@@ -23,8 +29,11 @@ export class InMemoryAdapter implements PersistenceAdapter {
   private nextApplyError: unknown = null;
   private nextLoadHold: Promise<void> | null = null;
   private nextApplyHold: Promise<void> | null = null;
+  private nextReplaceAllError: unknown = null;
+  private nextReplaceAllHold: Promise<void> | null = null;
   loadCount = 0;
   applyCount = 0;
+  replaceAllCount = 0;
 
   constructor(seed: InMemoryAdapterSeed = {}) {
     for (const entry of seed.entries ?? []) this.entries.set(entry.id, { ...entry });
@@ -68,6 +77,21 @@ export class InMemoryAdapter implements PersistenceAdapter {
     if (changes.preferences !== null) this.preferences = { ...changes.preferences };
   }
 
+  async replaceAll(data: BackupData): Promise<void> {
+    this.replaceAllCount += 1;
+    const hold = this.nextReplaceAllHold;
+    this.nextReplaceAllHold = null;
+    if (hold !== null) await hold;
+    const error = this.nextReplaceAllError;
+    if (error !== null) {
+      this.nextReplaceAllError = null;
+      throw error;
+    }
+    this.entries = new Map(data.entries.map((entry) => [entry.id, { ...entry }]));
+    // Mirrors the IndexedDB delete, or the in-memory tests would pass while the real path diverges (0059).
+    this.preferences = data.preferences === null ? null : { ...data.preferences };
+  }
+
   close(): void {
     // Nothing to release.
   }
@@ -95,6 +119,20 @@ export class InMemoryAdapter implements PersistenceAdapter {
   holdNextApply(): () => void {
     let release = (): void => undefined;
     this.nextApplyHold = new Promise<void>((resolve) => {
+      release = () => resolve();
+    });
+    return release;
+  }
+
+  /** Test seam: the next replaceAll() rejects with this error and changes nothing. */
+  failNextReplaceAll(error: unknown): void {
+    this.nextReplaceAllError = error;
+  }
+
+  /** Test seam: holds the next replaceAll() until the returned release function is called. */
+  holdNextReplaceAll(): () => void {
+    let release = (): void => undefined;
+    this.nextReplaceAllHold = new Promise<void>((resolve) => {
       release = () => resolve();
     });
     return release;

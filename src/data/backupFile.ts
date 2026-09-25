@@ -1,16 +1,8 @@
 import { format } from 'date-fns';
 import { parseStoredEntry, parseStoredPreferences, toStoredEntry } from './entryMapping';
-import { STORE_FORMAT_VERSION } from './persistence';
+import { STORE_FORMAT_VERSION, type BackupData } from './persistence';
 import type { Preferences } from './repository';
 import type { Entry } from '../domain/types';
-
-/** Structurally the `BackupData` of the Interfaces section. Declared here because task 1 runs before
- *  task 2 adds the exported type to persistence.ts; task 2 replaces this with
- *  `import { STORE_FORMAT_VERSION, type BackupData } from './persistence';`. */
-interface BackupData {
-  entries: readonly Entry[];
-  preferences: Preferences | null;
-}
 
 /** Guards against JSON from a foreign tool. */
 export const BACKUP_APP_MARKER = 'zeiterfassung';
