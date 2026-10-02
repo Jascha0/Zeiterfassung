@@ -483,6 +483,31 @@ describe('SettingsView: an empty store has nothing to lose (requirement 7 skip c
     expect(written).toHaveLength(0);
     expect(adapter.storedEntries()).toEqual([FILE_ENTRY_A, FILE_ENTRY_B]);
   });
+
+  // A saved theme alone is something to lose: no entries does NOT mean nothing to lose.
+  it('still backs up a store that holds only a preference', async () => {
+    const uiUser = userEvent.setup();
+    const written: Array<{ name: string; text: string }> = [];
+    const { store } = renderSettings({ preferences: { theme: 'light' } }, recordingWriter(written));
+    await waitFor(() => expect(store.readAll()).not.toBeNull());
+
+    await uiUser.upload(screen.getByLabelText(IMPORT_LABEL), backupFile('sicherung.json', validBody()));
+
+    await screen.findByRole('dialog');
+    const lines = dialogParagraphs();
+    expect(lines).toContain('Einträge in dieser App: 0 – sie werden gelöscht.');
+    expect(lines).toContain(PRE_IMPORT_LINE);
+    expect(lines).toHaveLength(6);
+
+    await uiUser.click(screen.getByRole('button', { name: CONFIRM_LABEL }));
+
+    expect(await screen.findByText('2 Einträge wurden eingelesen.')).toBeInTheDocument();
+    expect(written).toHaveLength(1);
+    const parsed = parseBackup(written[0].text);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error('the pre-import text does not parse as a backup');
+    expect(parsed.content.preferences).toEqual({ theme: 'light' });
+  });
 });
 
 describe('SettingsView: the file input itself (C8)', () => {
