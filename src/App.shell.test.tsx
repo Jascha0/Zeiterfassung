@@ -28,7 +28,7 @@ const LOAD_ERROR = 'Daten konnten nicht geladen werden.';
 const WRITE_ERROR = 'Die Änderung konnte nicht gespeichert werden.';
 const MULTIPLE_OPEN_WARNING = 'Es gibt mehrere offene Einträge. Aktionen betreffen den zuletzt gestarteten Eintrag.';
 const LOCAL_DATA_NOTICE =
-  'Alle Daten liegen nur in diesem Browser auf diesem Gerät. Wenn du die Browserdaten löschst, sind sie weg. Eine Sicherung als Datei folgt im nächsten Schritt.';
+  'Alle Daten liegen nur in diesem Browser auf diesem Gerät. Wenn du die Browserdaten löschst, sind sie weg. Lade dir deshalb regelmäßig eine Sicherung herunter.';
 
 function dateKeyDaysFromToday(offset: number): string {
   return toDateKey(Date.now() + offset * DAY_MS);
