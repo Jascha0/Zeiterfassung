@@ -12,7 +12,6 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import type { Services } from './app/ServicesContext';
 import { noopChannelFactory } from './data/channel';
 import { InMemoryAdapter } from './data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from './data/localStore';
@@ -20,6 +19,7 @@ import { formatLongDate } from './domain/format';
 import { dayStartFromKey, toDateKey, toMonthKey } from './domain/routing';
 import type { Entry, EntryType } from './domain/types';
 import { createTestStore } from './test/createTestStore';
+import { servicesOf } from './test/testServices';
 import { THEME_STORAGE_KEY } from './theme/theme';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -49,10 +49,6 @@ function entryOn(id: string, type: EntryType, dateKey: string, from: number, to:
   const start = at(dateKey, from);
   const end = to === null ? null : at(dateKey, to);
   return { id, type, start, end, createdAt: start, updatedAt: end ?? start };
-}
-
-function servicesOf(store: LocalStore): Services {
-  return { entries: store, settings: store };
 }
 
 function renderApp(store: LocalStore) {

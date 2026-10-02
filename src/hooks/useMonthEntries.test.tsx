@@ -1,11 +1,12 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { ServicesProvider, type Services } from '../app/ServicesContext';
+import { ServicesProvider } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
+import { servicesOf } from '../test/testServices';
 import type { Entry } from '../domain/types';
 import { useMonthEntries } from './useMonthEntries';
 
@@ -34,7 +35,7 @@ function MonthProbe(): React.JSX.Element {
 }
 
 function Probe(props: { store: LocalStore }): React.JSX.Element {
-  const services: Services = { entries: props.store, settings: props.store };
+  const services = servicesOf(props.store);
   return (
     <ServicesProvider services={services}>
       <ToastProvider>

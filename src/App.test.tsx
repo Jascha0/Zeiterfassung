@@ -2,17 +2,13 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import App from './App';
-import type { Services } from './app/ServicesContext';
 import { noopChannelFactory } from './data/channel';
 import { InMemoryAdapter } from './data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from './data/localStore';
 import { formatLongDate } from './domain/format';
 import { dayStartFromKey, toDateKey, toMonthKey } from './domain/routing';
 import { createTestStore } from './test/createTestStore';
-
-function servicesOf(store: LocalStore): Services {
-  return { entries: store, settings: store };
-}
+import { servicesOf } from './test/testServices';
 
 function renderApp(store: LocalStore = createTestStore().store) {
   return { store, ...render(<App services={servicesOf(store)} />) };

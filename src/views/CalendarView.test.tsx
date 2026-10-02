@@ -1,12 +1,13 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ServicesProvider, type Services } from '../app/ServicesContext';
+import { ServicesProvider } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
+import { servicesOf } from '../test/testServices';
 import type { Entry, EntryType } from '../domain/types';
 import { CalendarView } from './CalendarView';
 
@@ -17,7 +18,7 @@ function entry(id: string, type: EntryType, from: string, to: string): Entry {
 }
 
 function renderCalendar(store: LocalStore, onOpenDay: (dateKey: string) => void = vi.fn()) {
-  const services: Services = { entries: store, settings: store };
+  const services = servicesOf(store);
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>

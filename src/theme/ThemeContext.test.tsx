@@ -2,12 +2,13 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ServicesProvider, type Services } from '../app/ServicesContext';
+import { ServicesProvider } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, type LocalStore } from '../data/localStore';
 import { createTestStore } from '../test/createTestStore';
+import { servicesOf } from '../test/testServices';
 import { THEME_STORAGE_KEY } from './theme';
 import { ThemeProvider, useTheme } from './ThemeContext';
 
@@ -36,7 +37,7 @@ function ThemeProbe(props: { onRender?: (pref: string) => void }): React.JSX.Ele
 }
 
 function renderTheme(store: LocalStore, onRender?: (pref: string) => void) {
-  const services: Services = { entries: store, settings: store };
+  const services = servicesOf(store);
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>

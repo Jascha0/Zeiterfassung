@@ -1,18 +1,19 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ServicesProvider, type Services } from '../app/ServicesContext';
+import { ServicesProvider } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import { noopChannelFactory } from '../data/channel';
 import { InMemoryAdapter } from '../data/inMemoryAdapter';
 import { createLocalStore, LocalStore } from '../data/localStore';
 import { dayStartFromKey, toDateKey } from '../domain/routing';
 import { createTestStore } from '../test/createTestStore';
+import { servicesOf } from '../test/testServices';
 import type { TransitionPlan } from '../domain/timer';
 import { TimerView } from './TimerView';
 
 function renderTimer(store: LocalStore, onOpenDay: (dateKey: string) => void = vi.fn()) {
-  const services: Services = { entries: store, settings: store };
+  const services = servicesOf(store);
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>

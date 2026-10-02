@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ServicesProvider, type Services } from '../app/ServicesContext';
+import { ServicesProvider } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import { createTestStore } from '../test/createTestStore';
+import { servicesOf } from '../test/testServices';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { SettingsView } from './SettingsView';
 
@@ -12,7 +13,7 @@ const NOTICE =
 
 function renderSettings() {
   const { store } = createTestStore();
-  const services: Services = { entries: store, settings: store };
+  const services = servicesOf(store);
   render(
     <ServicesProvider services={services}>
       <ToastProvider>

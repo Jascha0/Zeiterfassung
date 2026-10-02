@@ -1,13 +1,14 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ServicesProvider, type Services } from '../app/ServicesContext';
+import { ServicesProvider } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import type { LocalStore } from '../data/localStore';
 import { formatLongDate, formatShortDate } from '../domain/format';
 import { dayStartFromKey, toDateKey } from '../domain/routing';
 import type { Entry, EntryType } from '../domain/types';
 import { createTestStore } from '../test/createTestStore';
+import { servicesOf } from '../test/testServices';
 import { DayDetailView } from './DayDetailView';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -38,7 +39,7 @@ function lastYearsDstFallbackDateKey(): string {
 }
 
 function renderDayDetail(store: LocalStore, dateKey: string, onBack: () => void = vi.fn()) {
-  const services: Services = { entries: store, settings: store };
+  const services = servicesOf(store);
   return render(
     <ServicesProvider services={services}>
       <ToastProvider>
