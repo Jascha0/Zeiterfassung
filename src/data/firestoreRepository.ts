@@ -121,6 +121,21 @@ export class FirestoreRepository implements EntryRepository, SettingsRepository 
     return this.subscribeQuery(nextQuery, (entries) => onChange(entries[0] ?? null), onError);
   }
 
+  subscribeLastEntryBefore(
+    uid: string,
+    before: number,
+    onChange: (entry: Entry | null) => void,
+    onError: (error: Error) => void,
+  ): Unsubscribe {
+    const previousQuery = query(
+      this.entriesCollection(uid),
+      where('start', '<', Timestamp.fromMillis(before)),
+      orderBy('start', 'desc'),
+      limit(1),
+    );
+    return this.subscribeQuery(previousQuery, (entries) => onChange(entries[0] ?? null), onError);
+  }
+
   subscribePreferences(
     uid: string,
     onChange: (prefs: Preferences | null) => void,
