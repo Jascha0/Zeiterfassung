@@ -1,11 +1,12 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import type { Services } from './app/ServicesContext';
 import { AUTH_MESSAGES } from './auth/authErrors';
 import type { AuthUser } from './auth/authTypes';
 import { InMemoryRepository } from './data/inMemoryRepository';
+import type { Entry } from './domain/types';
 import { FakeAuthService } from './test/fakeAuthService';
 
 function user(overrides: Partial<AuthUser> = {}): AuthUser {
@@ -108,6 +109,154 @@ describe('App: redirect error while signed in (review fix — Shell-level notice
 
     expect(await screen.findByRole('button', { name: 'Anmelden' })).toBeInTheDocument();
     expect(screen.queryByText(AUTH_MESSAGES['credential-already-in-use'])).not.toBeInTheDocument();
+  });
+});
+
+describe('App: Kalender', () => {
+  function at(day: number, hours: number, minutes = 0): number {
+    return new Date(2026, 9, day, hours, minutes).getTime();
+  }
+
+  function openEntry(id: string, start: number): Entry {
+    return { id, type: 'work', start, end: null, createdAt: start, updatedAt: start };
+  }
+
+  function renderSignedIn(repo: InMemoryRepository) {
+    const auth = new FakeAuthService();
+    auth.setUser(user());
+    render(<App services={{ auth, entries: repo, settings: repo }} />);
+  }
+
+  function itemFor(text: string | RegExp): HTMLElement {
+    const item = screen.getByText(text).closest('li');
+    if (!item) throw new Error('list item missing');
+    return item;
+  }
+
+  async function typeInto(ui: ReturnType<typeof userEvent.setup>, label: string, value: string) {
+    const input = screen.getByLabelText(label);
+    await ui.clear(input);
+    await ui.type(input, value);
+  }
+
+  async function openDay(ui: ReturnType<typeof userEvent.setup>, name: RegExp) {
+    await ui.click(screen.getByRole('button', { name: 'Kalender' }));
+    await ui.click(await screen.findByRole('button', { name }));
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date(2026, 9, 16, 15, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('shows Timer, Kalender, Konto in order and opens the current month with today marked', async () => {
+    const ui = userEvent.setup();
+    renderSignedIn(new InMemoryRepository());
+    const nav = await screen.findByRole('navigation', { name: 'Hauptnavigation' });
+    expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['Timer', 'Kalender', 'Konto']);
+
+    await ui.click(screen.getByRole('button', { name: 'Kalender' }));
+    expect(screen.getByRole('heading', { name: 'Oktober 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kalender' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Timer' })).not.toHaveAttribute('aria-current');
+    const today = await screen.findByRole('button', { name: /^Freitag, 16\. Oktober 2026/ });
+    expect(today).toHaveAttribute('aria-current', 'date');
+  });
+
+  it('adds an entry in the day detail, then edits it; the calendar follows', async () => {
+    const ui = userEvent.setup();
+    renderSignedIn(new InMemoryRepository());
+    await screen.findByText('Arbeitszeit');
+
+    await openDay(ui, /^Mittwoch, 14\. Oktober 2026/);
+    expect(screen.getByRole('heading', { name: 'Mittwoch, 14. Oktober 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kalender' })).toHaveAttribute('aria-current', 'page');
+    await screen.findByText('Keine Einträge an diesem Tag.');
+    await ui.click(screen.getByRole('button', { name: 'Eintrag hinzufügen' }));
+    await typeInto(ui, 'Beginn', '08:00');
+    await typeInto(ui, 'Ende', '12:00');
+    await ui.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(await screen.findByText('Arbeit 08:00 – 12:00 (4:00)')).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Zurück zum Kalender' }));
+    expect(screen.getByRole('heading', { name: 'Oktober 2026' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^Mittwoch, 14\. Oktober 2026/ })).toHaveAccessibleName(
+      /4:00 gearbeitet/,
+    );
+
+    await ui.click(screen.getByRole('button', { name: /^Mittwoch, 14\. Oktober 2026/ }));
+    await ui.click(within(await waitFor(() => itemFor('Arbeit 08:00 – 12:00 (4:00)'))).getByRole('button', { name: 'Bearbeiten' }));
+    await typeInto(ui, 'Ende', '13:00');
+    await ui.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(await screen.findByText('Arbeit 08:00 – 13:00 (5:00)')).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Zurück zum Kalender' }));
+    expect(await screen.findByRole('button', { name: /^Mittwoch, 14\. Oktober 2026/ })).toHaveAccessibleName(
+      /5:00 gearbeitet/,
+    );
+  });
+
+  it('resolves two open entries from the timer warning; the newer one keeps running', async () => {
+    const ui = userEvent.setup();
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [openEntry('old', at(12, 8)), openEntry('new', at(16, 14))]);
+    renderSignedIn(repo);
+
+    expect(await screen.findByText(/mehrere offene Einträge/)).toBeInTheDocument();
+    await ui.click(screen.getByRole('button', { name: 'Offene Einträge bereinigen' }));
+    expect(screen.getByRole('heading', { name: 'Offene Einträge bereinigen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Timer' })).toHaveAttribute('aria-current', 'page');
+
+    const item = (await screen.findByText('12.10.2026 · Arbeit ab 08:00')).closest('li');
+    if (!item) throw new Error('list item missing');
+    await ui.click(within(item).getByRole('button', { name: 'Beenden um …' }));
+    const form = await screen.findByRole('form', { name: 'Eintrag beenden' });
+    const submit = within(form).getByRole('button', { name: 'Beenden' });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await ui.click(submit);
+    expect(await screen.findByText('Es gibt keine älteren offenen Einträge mehr.')).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Zurück zum Timer' }));
+    expect(await screen.findByText('Arbeitet seit 14:00')).toBeInTheDocument();
+    expect(screen.queryByText(/mehrere offene Einträge/)).not.toBeInTheDocument();
+    expect(repo.getEntries('u1').filter((e) => e.end === null).map((e) => e.id)).toEqual(['new']);
+  });
+
+  it('editing the active entry start in the day detail updates the timer', async () => {
+    const ui = userEvent.setup();
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [openEntry('run', at(16, 14))]);
+    renderSignedIn(repo);
+    expect(await screen.findByText('Arbeitet seit 14:00')).toBeInTheDocument();
+
+    await openDay(ui, /^Freitag, 16\. Oktober 2026/);
+    await ui.click(within(await waitFor(() => itemFor(/^Arbeit 14:00 – läuft/))).getByRole('button', { name: 'Bearbeiten' }));
+    await typeInto(ui, 'Beginn', '13:00');
+    await ui.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(await screen.findByText(/^Arbeit 13:00 – läuft/)).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Timer' }));
+    expect(await screen.findByText('Arbeitet seit 13:00')).toBeInTheDocument();
+  });
+
+  it('deleting the active entry in the day detail makes the timer idle', async () => {
+    const ui = userEvent.setup();
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [openEntry('run', at(16, 14))]);
+    renderSignedIn(repo);
+    expect(await screen.findByText('Arbeitet seit 14:00')).toBeInTheDocument();
+
+    await openDay(ui, /^Freitag, 16\. Oktober 2026/);
+    await ui.click(within(await waitFor(() => itemFor(/^Arbeit 14:00 – läuft/))).getByRole('button', { name: 'Löschen' }));
+    await ui.click(screen.getByRole('button', { name: 'Ja, löschen' }));
+    expect(await screen.findByText('Keine Einträge an diesem Tag.')).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Timer' }));
+    expect(await screen.findByText('Nicht gestartet')).toBeInTheDocument();
   });
 });
 
