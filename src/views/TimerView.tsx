@@ -25,7 +25,7 @@ const ACTION_LABELS: Record<TimerAction, string> = {
 };
 
 const MULTIPLE_OPEN_WARNING =
-  'Es gibt mehrere offene Einträge – vermutlich wurde der Timer offline auf mehreren Geräten gestartet. Aktionen betreffen den zuletzt gestarteten Eintrag. Eine Bereinigung ist in einer späteren Version möglich.';
+  'Es gibt mehrere offene Einträge – vermutlich wurde der Timer offline auf mehreren Geräten gestartet. Aktionen betreffen den zuletzt gestarteten Eintrag. Bitte beende oder lösche die älteren offenen Einträge.';
 const LONG_RUNNING_WARNING =
   'Der aktuelle Arbeitsblock läuft seit mehr als 12 Stunden. Hast du vergessen, den Arbeitstag zu beenden?';
 
@@ -41,7 +41,7 @@ function entryText(entry: Entry, now: number): string {
   return `${type} ${formatClock(entry.start)} – ${end} (${formatDuration(entryDurationMs(entry, now))})`;
 }
 
-export function TimerView(props: { uid: string }): React.JSX.Element {
+export function TimerView(props: { uid: string; onResolveOpenEntries?: () => void }): React.JSX.Element {
   const { uid } = props;
   const { entries } = useServices();
   const { showToast } = useToast();
@@ -112,6 +112,13 @@ export function TimerView(props: { uid: string }): React.JSX.Element {
               ))}
             </div>
             {hasMultipleOpenEntries(data.openEntries) && <p role="alert">{MULTIPLE_OPEN_WARNING}</p>}
+            {hasMultipleOpenEntries(data.openEntries) && props.onResolveOpenEntries !== undefined && (
+              <div className="button-row">
+                <button type="button" onClick={props.onResolveOpenEntries}>
+                  Offene Einträge bereinigen
+                </button>
+              </div>
+            )}
             {isLongRunningWork(status.activeEntry, now) && <p role="alert">{LONG_RUNNING_WARNING}</p>}
           </>
         )}

@@ -123,6 +123,45 @@ describe('TimerView: warnings', () => {
   });
 });
 
+describe('TimerView: resolve open entries entry point', () => {
+  function seedTwoOpen(repo: InMemoryRepository) {
+    const now = Date.now();
+    repo.seedEntries(UID, [
+      { id: 'w1', type: 'work', start: now - 60_000, end: null, createdAt: now, updatedAt: now },
+      { id: 'w2', type: 'work', start: now - 30_000, end: null, createdAt: now, updatedAt: now },
+    ]);
+  }
+
+  it('offers "Offene Einträge bereinigen" with two open entries and calls the callback', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    seedTwoOpen(repo);
+    const spy = vi.fn();
+    const services: Services = { auth: new FakeAuthService(), entries: repo, settings: repo };
+    render(
+      <ServicesProvider services={services}>
+        <ToastProvider>
+          <TimerView uid={UID} onResolveOpenEntries={spy} />
+        </ToastProvider>
+      </ServicesProvider>,
+    );
+
+    const warning = await screen.findByText(/mehrere offene Einträge/);
+    expect(warning).toHaveTextContent('Bitte beende oder lösche die älteren offenen Einträge.');
+    expect(warning).not.toHaveTextContent('Eine Bereinigung ist in einer späteren Version möglich.');
+    await user.click(screen.getByRole('button', { name: 'Offene Einträge bereinigen' }));
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render the button without the callback prop', async () => {
+    const repo = new InMemoryRepository();
+    seedTwoOpen(repo);
+    renderTimer(repo);
+    await screen.findByText(/mehrere offene Einträge/);
+    expect(screen.queryByRole('button', { name: 'Offene Einträge bereinigen' })).not.toBeInTheDocument();
+  });
+});
+
 describe('TimerView: offline (edge case 21)', () => {
   it('updates the UI immediately while offline; the write stays pending and no error toast appears', async () => {
     const user = userEvent.setup();
