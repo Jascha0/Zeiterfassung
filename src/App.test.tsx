@@ -160,11 +160,11 @@ describe('App: Kalender', () => {
     vi.useRealTimers();
   });
 
-  it('shows Timer, Kalender, Konto in order and opens the current month with today marked', async () => {
+  it('shows Timer, Kalender, Projekte, Konto in order and opens the current month with today marked', async () => {
     const ui = userEvent.setup({ delay: null });
     renderSignedIn(new InMemoryRepository());
     const nav = await screen.findByRole('navigation', { name: 'Hauptnavigation' });
-    expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['Timer', 'Kalender', 'Konto']);
+    expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['Timer', 'Kalender', 'Projekte', 'Konto']);
 
     await ui.click(screen.getByRole('button', { name: 'Kalender' }));
     expect(screen.getByRole('heading', { name: 'Oktober 2026' })).toBeInTheDocument();
@@ -289,5 +289,25 @@ describe('App: verification banner', () => {
     render(<App services={makeServices(auth)} />);
     await screen.findByText('Arbeitszeit');
     expect(screen.queryByRole('region', { name: 'E-Mail-Bestätigung' })).not.toBeInTheDocument();
+  });
+});
+
+describe('App: Projekte (slice 3)', () => {
+  it('opens the project view from the nav and marks only "Projekte" as current (edge case 30)', async () => {
+    const ui = userEvent.setup();
+    const auth = new FakeAuthService();
+    const repo = new InMemoryRepository();
+    auth.setUser(user());
+    render(<App services={{ auth, entries: repo, settings: repo, projects: repo }} />);
+    await screen.findByText('Arbeitszeit');
+
+    await ui.click(screen.getByRole('button', { name: 'Projekte' }));
+
+    expect(screen.getByRole('heading', { name: 'Projekte' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Projekte' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Timer' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: 'Kalender' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: 'Konto' })).not.toHaveAttribute('aria-current');
+    expect(await screen.findByText('Noch keine Projekte.')).toBeInTheDocument();
   });
 });

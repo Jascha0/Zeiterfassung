@@ -11,6 +11,7 @@ import { AccountView } from './views/AccountView';
 import { CalendarView } from './views/CalendarView';
 import { DayDetailView } from './views/DayDetailView';
 import { LoginView } from './views/LoginView';
+import { ProjectsView } from './views/ProjectsView';
 import { ResolveView } from './views/ResolveView';
 import { TimerView } from './views/TimerView';
 
@@ -19,7 +20,8 @@ type View =
   | { name: 'account' }
   | { name: 'calendar'; monthStart: number }
   | { name: 'day'; dayStart: number }
-  | { name: 'resolve' };
+  | { name: 'resolve' }
+  | { name: 'projects' };
 
 function renderView(view: View, user: AuthUser, setView: (view: View) => void): React.JSX.Element {
   switch (view.name) {
@@ -48,6 +50,8 @@ function renderView(view: View, user: AuthUser, setView: (view: View) => void): 
       );
     case 'resolve':
       return <ResolveView uid={user.uid} onBack={() => setView({ name: 'timer' })} />;
+    case 'projects':
+      return <ProjectsView uid={user.uid} />;
   }
 }
 
@@ -77,6 +81,13 @@ function Shell(props: { user: AuthUser }): React.JSX.Element {
             onClick={() => setView({ name: 'calendar', monthStart: monthStartOf(Date.now()) })}
           >
             Kalender
+          </button>
+          <button
+            type="button"
+            aria-current={view.name === 'projects' ? 'page' : undefined}
+            onClick={() => setView({ name: 'projects' })}
+          >
+            Projekte
           </button>
           <button
             type="button"
