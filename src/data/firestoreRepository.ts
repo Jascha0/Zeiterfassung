@@ -1,11 +1,14 @@
 import {
   Timestamp,
   collection,
+  deleteDoc,
   doc,
+  limit,
   onSnapshot,
   orderBy,
   query,
   setDoc,
+  updateDoc,
   where,
   writeBatch,
   type Firestore,
@@ -14,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import type { Unsubscribe } from '../auth/authTypes';
 import type { TransitionPlan } from '../domain/timer';
-import type { Entry, TimeRange } from '../domain/types';
+import type { Entry, EntryChanges, NewClosedEntry, TimeRange } from '../domain/types';
 import { parseEntry, parsePreferences } from './entryMapping';
 import type { EntryRepository, Preferences, SettingsRepository } from './repository';
 
@@ -79,6 +82,43 @@ export class FirestoreRepository implements EntryRepository, SettingsRepository 
       });
     }
     return batch.commit();
+  }
+
+  createEntry(uid: string, entry: NewClosedEntry): Promise<void> {
+    return setDoc(doc(this.entriesCollection(uid)), {
+      type: entry.type,
+      start: Timestamp.fromMillis(entry.start),
+      end: Timestamp.fromMillis(entry.end),
+      createdAt: Timestamp.fromMillis(entry.createdAt),
+      updatedAt: Timestamp.fromMillis(entry.updatedAt),
+    });
+  }
+
+  updateEntry(uid: string, id: string, changes: EntryChanges): Promise<void> {
+    const data: { [field: string]: string | Timestamp } = { updatedAt: Timestamp.fromMillis(changes.updatedAt) };
+    if (changes.type !== undefined) data.type = changes.type;
+    if (changes.start !== undefined) data.start = Timestamp.fromMillis(changes.start);
+    if (changes.end !== undefined) data.end = Timestamp.fromMillis(changes.end);
+    return updateDoc(doc(this.entriesCollection(uid), id), data);
+  }
+
+  deleteEntry(uid: string, id: string): Promise<void> {
+    return deleteDoc(doc(this.entriesCollection(uid), id));
+  }
+
+  subscribeFirstEntryAfter(
+    uid: string,
+    after: number,
+    onChange: (entry: Entry | null) => void,
+    onError: (error: Error) => void,
+  ): Unsubscribe {
+    const nextQuery = query(
+      this.entriesCollection(uid),
+      where('start', '>', Timestamp.fromMillis(after)),
+      orderBy('start', 'asc'),
+      limit(1),
+    );
+    return this.subscribeQuery(nextQuery, (entries) => onChange(entries[0] ?? null), onError);
   }
 
   subscribePreferences(

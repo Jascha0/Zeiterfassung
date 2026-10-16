@@ -1,6 +1,6 @@
 import type { Unsubscribe } from '../auth/authTypes';
 import type { TransitionPlan } from '../domain/timer';
-import type { Entry, TimeRange } from '../domain/types';
+import type { Entry, EntryChanges, NewClosedEntry, TimeRange } from '../domain/types';
 import type { EntryRepository, Preferences, SettingsRepository } from './repository';
 
 interface EntrySubscription {
@@ -121,6 +121,70 @@ export class InMemoryRepository implements EntryRepository, SettingsRepository {
       if (createdId !== null) current.delete(createdId);
       for (const entry of previous) current.set(entry.id, entry);
       this.notifyEntries(uid);
+    });
+  }
+
+  createEntry(uid: string, entry: NewClosedEntry): Promise<void> {
+    const userEntries = this.userEntries(uid);
+    const id = `mem-${this.nextId++}`;
+    userEntries.set(id, {
+      id,
+      type: entry.type,
+      start: entry.start,
+      end: entry.end,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    });
+    this.notifyEntries(uid);
+    return this.settleWrite(() => {
+      this.userEntries(uid).delete(id);
+      this.notifyEntries(uid);
+    });
+  }
+
+  updateEntry(uid: string, id: string, changes: EntryChanges): Promise<void> {
+    const userEntries = this.userEntries(uid);
+    const previous = userEntries.get(id);
+    if (previous === undefined) {
+      return Promise.reject(Object.assign(new Error('not-found'), { code: 'not-found' }));
+    }
+    const updated: Entry = { ...previous, updatedAt: changes.updatedAt };
+    if (changes.type !== undefined) updated.type = changes.type;
+    if (changes.start !== undefined) updated.start = changes.start;
+    if (changes.end !== undefined) updated.end = changes.end;
+    userEntries.set(id, updated);
+    this.notifyEntries(uid);
+    const snapshot = { ...previous };
+    return this.settleWrite(() => {
+      this.userEntries(uid).set(id, snapshot);
+      this.notifyEntries(uid);
+    });
+  }
+
+  deleteEntry(uid: string, id: string): Promise<void> {
+    const userEntries = this.userEntries(uid);
+    const previous = userEntries.get(id);
+    if (previous === undefined) return this.settleWrite(() => {});
+    const snapshot = { ...previous };
+    userEntries.delete(id);
+    this.notifyEntries(uid);
+    return this.settleWrite(() => {
+      this.userEntries(uid).set(id, snapshot);
+      this.notifyEntries(uid);
+    });
+  }
+
+  subscribeFirstEntryAfter(
+    uid: string,
+    after: number,
+    onChange: (entry: Entry | null) => void,
+    _onError: (error: Error) => void,
+  ): Unsubscribe {
+    return this.subscribe({
+      kind: 'entries',
+      uid,
+      select: (entries) => entries.filter((entry) => entry.start > after).slice(0, 1),
+      onChange: (entries) => onChange(entries[0] ?? null),
     });
   }
 

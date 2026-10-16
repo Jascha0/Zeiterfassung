@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { InMemoryRepository } from './inMemoryRepository';
-import type { Entry } from '../domain/types';
+import type { Entry, NewClosedEntry } from '../domain/types';
 import type { TransitionPlan } from '../domain/timer';
 
 function entry(overrides: Partial<Entry> & { id: string }): Entry {
@@ -287,5 +287,166 @@ describe('InMemoryRepository: savePreferences', () => {
     repo.subscribePreferences('u1', onChange, vi.fn());
     await flushMicrotasks();
     expect(onChange).toHaveBeenCalledWith({ theme: 'light' });
+  });
+});
+
+describe('InMemoryRepository: single-entry writes', () => {
+  const closed: NewClosedEntry = { type: 'work', start: 100, end: 200, createdAt: 1, updatedAt: 1 };
+
+  it('createEntry adds an entry with id mem-1, notifies a range subscriber synchronously and resolves', async () => {
+    const repo = new InMemoryRepository();
+    const onChange = vi.fn();
+    repo.subscribeEntriesInRange('u1', { start: 0, end: 1000 }, onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    const promise = repo.createEntry('u1', closed);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0]).toEqual([{ id: 'mem-1', ...closed }]);
+    await expect(promise).resolves.toBeUndefined();
+    expect(repo.getEntries('u1')).toEqual([{ id: 'mem-1', ...closed }]);
+  });
+
+  it('updateEntry changes only end and updatedAt', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [entry({ id: 'a', type: 'break', start: 100, end: 300, createdAt: 5, updatedAt: 5 })]);
+    await expect(repo.updateEntry('u1', 'a', { end: 500, updatedAt: 9 })).resolves.toBeUndefined();
+    expect(repo.getEntries('u1')).toEqual([
+      entry({ id: 'a', type: 'break', start: 100, end: 500, createdAt: 5, updatedAt: 9 }),
+    ]);
+  });
+
+  it('updateEntry on a missing id rejects with not-found and changes nothing', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [entry({ id: 'a', start: 100, end: 300 })]);
+    const onChange = vi.fn();
+    repo.subscribeEntriesInRange('u1', { start: 0, end: 1000 }, onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    await expect(repo.updateEntry('u1', 'missing', { end: 500, updatedAt: 9 })).rejects.toMatchObject({
+      code: 'not-found',
+    });
+    expect(repo.getEntries('u1')).toEqual([entry({ id: 'a', start: 100, end: 300 })]);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('deleteEntry removes and notifies', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [entry({ id: 'a', start: 100, end: 300 }), entry({ id: 'b', start: 400, end: 500 })]);
+    const onChange = vi.fn();
+    repo.subscribeEntriesInRange('u1', { start: 0, end: 1000 }, onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    const promise = repo.deleteEntry('u1', 'a');
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0].map((e: Entry) => e.id)).toEqual(['b']);
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('deleteEntry of a missing id resolves', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [entry({ id: 'a', start: 100, end: 300 })]);
+    await expect(repo.deleteEntry('u1', 'missing')).resolves.toBeUndefined();
+    expect(repo.getEntries('u1')).toEqual([entry({ id: 'a', start: 100, end: 300 })]);
+  });
+
+  it('offline: each write is visible immediately, stays pending and resolves after setOffline(false)', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [entry({ id: 'a', start: 100, end: 300 }), entry({ id: 'b', start: 400, end: 500 })]);
+    repo.setOffline(true);
+
+    const created = repo.createEntry('u1', { ...closed, start: 600, end: 700 });
+    expect(repo.getEntries('u1').map((e) => e.id)).toEqual(['a', 'b', 'mem-1']);
+    const updated = repo.updateEntry('u1', 'a', { start: 150, updatedAt: 9 });
+    expect(repo.getEntries('u1')[0].start).toBe(150);
+    const deleted = repo.deleteEntry('u1', 'b');
+    expect(repo.getEntries('u1').map((e) => e.id)).toEqual(['a', 'mem-1']);
+
+    const settled: string[] = [];
+    void created.then(() => settled.push('create'));
+    void updated.then(() => settled.push('update'));
+    void deleted.then(() => settled.push('delete'));
+    await flushMicrotasks();
+    await flushMicrotasks();
+    expect(settled).toEqual([]);
+
+    repo.setOffline(false);
+    await Promise.all([created, updated, deleted]);
+    expect(settled).toEqual(['create', 'update', 'delete']);
+  });
+
+  it('failNextWrite then createEntry rolls back, notifies and rejects with the error', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [entry({ id: 'a', start: 100, end: 300 })]);
+    const onChange = vi.fn();
+    repo.subscribeEntriesInRange('u1', { start: 0, end: 1000 }, onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    const error = new Error('denied');
+    repo.failNextWrite(error);
+    await expect(repo.createEntry('u1', { ...closed, start: 400, end: 500 })).rejects.toBe(error);
+    expect(repo.getEntries('u1')).toEqual([entry({ id: 'a', start: 100, end: 300 })]);
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange.mock.calls.at(-1)?.[0].map((e: Entry) => e.id)).toEqual(['a']);
+  });
+
+  it('failNextWrite then updateEntry rolls back to the previous value, notifies and rejects', async () => {
+    const repo = new InMemoryRepository();
+    const original = entry({ id: 'a', type: 'work', start: 100, end: 300, createdAt: 5, updatedAt: 5 });
+    repo.seedEntries('u1', [original]);
+    const onChange = vi.fn();
+    repo.subscribeEntriesInRange('u1', { start: 0, end: 1000 }, onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    const error = new Error('denied');
+    repo.failNextWrite(error);
+    await expect(repo.updateEntry('u1', 'a', { type: 'break', start: 150, end: 400, updatedAt: 9 })).rejects.toBe(error);
+    expect(repo.getEntries('u1')).toEqual([original]);
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange.mock.calls.at(-1)?.[0]).toEqual([original]);
+  });
+
+  it('failNextWrite then deleteEntry restores the entry, notifies and rejects', async () => {
+    const repo = new InMemoryRepository();
+    const original = entry({ id: 'a', start: 100, end: 300 });
+    repo.seedEntries('u1', [original]);
+    const onChange = vi.fn();
+    repo.subscribeEntriesInRange('u1', { start: 0, end: 1000 }, onChange, vi.fn());
+    await flushMicrotasks();
+    onChange.mockClear();
+
+    const error = new Error('denied');
+    repo.failNextWrite(error);
+    await expect(repo.deleteEntry('u1', 'a')).rejects.toBe(error);
+    expect(repo.getEntries('u1')).toEqual([original]);
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange.mock.calls[0][0]).toEqual([]);
+    expect(onChange.mock.calls.at(-1)?.[0]).toEqual([original]);
+  });
+
+  it('subscribeFirstEntryAfter delivers the earliest entry strictly after t, null if none, and re-fires on change', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [
+      entry({ id: 'x', start: 100, end: 150 }),
+      entry({ id: 'z', start: 300, end: 350 }),
+      entry({ id: 'y', start: 200, end: 250 }),
+    ]);
+    const cb = vi.fn();
+    repo.subscribeFirstEntryAfter('u1', 100, cb, () => {});
+    await flushMicrotasks();
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb.mock.calls[0][0]).toEqual(entry({ id: 'y', start: 200, end: 250 }));
+
+    await repo.createEntry('u1', { ...closed, start: 120, end: 130 });
+    expect(cb.mock.calls.at(-1)?.[0]).toEqual({ id: 'mem-1', ...closed, start: 120, end: 130 });
+
+    const none = vi.fn();
+    repo.subscribeFirstEntryAfter('u1', 300, none, () => {});
+    await flushMicrotasks();
+    expect(none).toHaveBeenCalledWith(null);
   });
 });
