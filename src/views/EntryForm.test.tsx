@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
+import type { Unsubscribe } from '../auth/authTypes';
 import { InMemoryRepository } from '../data/inMemoryRepository';
-import type { Entry } from '../domain/types';
+import type { Entry, TimeRange } from '../domain/types';
 import { FakeAuthService } from '../test/fakeAuthService';
 import { EntryForm, type EntryFormMode } from './EntryForm';
 
@@ -188,6 +189,52 @@ describe('EntryForm: edit mode', () => {
     expect(changes.start).toBe(at(16, 10, 13));
     expect(repo.getEntries(UID)[0]).toMatchObject({ start: at(16, 10, 13), end: null });
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the exact stored multi-day end (incl. seconds) when only the start is touched in \'date\' mode', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    // end >= shiftDay(dayStart, 2) => endInputKindFor picks 'date' mode, not the next-day checkbox.
+    const original = entry('m1', 'work', at(14, 10, 22, 0, 15), at(16, 10, 2, 0, 45));
+    repo.seedEntries(UID, [original]);
+    const { onDone } = renderForm(repo, { kind: 'edit', dayStart: DAY, entry: original }, [original]);
+
+    expect(screen.getByLabelText('Enddatum')).toHaveValue('2026-10-16');
+    expect(screen.getByLabelText('Ende')).toHaveValue('02:00');
+    expect(screen.queryByText('endet am Folgetag')).not.toBeInTheDocument();
+
+    const submit = screen.getByRole('button', { name: 'Speichern' });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await typeInto(user, 'Beginn', '21:00');
+    await user.click(submit);
+
+    const [stored] = repo.getEntries(UID);
+    expect(stored?.start).toBe(at(14, 10, 21));
+    expect(stored?.end).toBe(at(16, 10, 2, 0, 45));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables submit and shows the load error when the extended (\'date\'-mode) window subscription fails', async () => {
+    class FailingRangeRepository extends InMemoryRepository {
+      override subscribeEntriesInRange(
+        _uid: string,
+        _range: TimeRange,
+        _onChange: (entries: Entry[]) => void,
+        onError: (error: Error) => void,
+      ): Unsubscribe {
+        queueMicrotask(() => onError(new Error('permission-denied')));
+        return () => {};
+      }
+    }
+    const repo = new FailingRangeRepository();
+    const original = entry('m1', 'work', at(14, 10, 22), at(16, 10, 2));
+    repo.seedEntries(UID, [original]);
+    renderForm(repo, { kind: 'edit', dayStart: DAY, entry: original }, [original]);
+
+    const submit = screen.getByRole('button', { name: 'Speichern' });
+    expect(submit).toBeDisabled();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Daten konnten nicht geladen werden.');
+    expect(submit).toBeDisabled();
   });
 });
 

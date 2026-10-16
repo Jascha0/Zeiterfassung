@@ -118,6 +118,32 @@ describe('ResolveView', () => {
     expect(within(form).getByLabelText('Ende')).toHaveValue('15:00');
   });
 
+  it('shows the load error in the resolve panel when the next-entry lookup fails (edge case 40)', async () => {
+    class FailingNextRepository extends InMemoryRepository {
+      override subscribeFirstEntryAfter(
+        _uid: string,
+        _after: number,
+        _onChange: (entry: Entry | null) => void,
+        onError: (error: Error) => void,
+      ): Unsubscribe {
+        queueMicrotask(() => onError(new Error('permission-denied')));
+        return () => {};
+      }
+    }
+    const user = userEvent.setup();
+    const repo = new FailingNextRepository();
+    repo.seedEntries(UID, [OLD, NEW]);
+    renderResolve(repo);
+
+    const item = (await screen.findByText('12.10.2026 · Arbeit ab 08:00')).closest('li');
+    if (!item) throw new Error('list item missing');
+    await user.click(within(item).getByRole('button', { name: 'Beenden um …' }));
+
+    expect(await within(item).findByRole('alert')).toHaveTextContent('Daten konnten nicht geladen werden.');
+    expect(within(item).queryByRole('form', { name: 'Eintrag beenden' })).not.toBeInTheDocument();
+    expect(within(item).queryByText('Lädt…')).not.toBeInTheDocument();
+  });
+
   it('rejects an end past a later entry with an overlap message and writes nothing', async () => {
     const user = userEvent.setup();
     const repo = new InMemoryRepository();

@@ -144,6 +144,13 @@ describe('App: Kalender', () => {
     await ui.click(await screen.findByRole('button', { name }));
   }
 
+  // `delay: null` on every `userEvent.setup()` below disables user-event's own real
+  // (setTimeout-based) pacing between keystrokes/clicks. `Date` is faked here but
+  // `setTimeout` is not, so without this the long interaction chains in this block
+  // depend on real wall-clock time elapsing promptly — under CPU contention (parallel
+  // test files) that occasionally exceeded the default findBy/waitFor timeout and
+  // made one test flaky (observed 1/23 full-suite runs). This removes that dependency
+  // without changing any assertion.
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     vi.setSystemTime(new Date(2026, 9, 16, 15, 0));
@@ -154,7 +161,7 @@ describe('App: Kalender', () => {
   });
 
   it('shows Timer, Kalender, Konto in order and opens the current month with today marked', async () => {
-    const ui = userEvent.setup();
+    const ui = userEvent.setup({ delay: null });
     renderSignedIn(new InMemoryRepository());
     const nav = await screen.findByRole('navigation', { name: 'Hauptnavigation' });
     expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['Timer', 'Kalender', 'Konto']);
@@ -168,7 +175,7 @@ describe('App: Kalender', () => {
   });
 
   it('adds an entry in the day detail, then edits it; the calendar follows', async () => {
-    const ui = userEvent.setup();
+    const ui = userEvent.setup({ delay: null });
     renderSignedIn(new InMemoryRepository());
     await screen.findByText('Arbeitszeit');
 
@@ -201,7 +208,7 @@ describe('App: Kalender', () => {
   });
 
   it('resolves two open entries from the timer warning; the newer one keeps running', async () => {
-    const ui = userEvent.setup();
+    const ui = userEvent.setup({ delay: null });
     const repo = new InMemoryRepository();
     repo.seedEntries('u1', [openEntry('old', at(12, 8)), openEntry('new', at(16, 14))]);
     renderSignedIn(repo);
@@ -227,7 +234,7 @@ describe('App: Kalender', () => {
   });
 
   it('editing the active entry start in the day detail updates the timer', async () => {
-    const ui = userEvent.setup();
+    const ui = userEvent.setup({ delay: null });
     const repo = new InMemoryRepository();
     repo.seedEntries('u1', [openEntry('run', at(16, 14))]);
     renderSignedIn(repo);
@@ -244,7 +251,7 @@ describe('App: Kalender', () => {
   });
 
   it('deleting the active entry in the day detail makes the timer idle', async () => {
-    const ui = userEvent.setup();
+    const ui = userEvent.setup({ delay: null });
     const repo = new InMemoryRepository();
     repo.seedEntries('u1', [openEntry('run', at(16, 14))]);
     renderSignedIn(repo);

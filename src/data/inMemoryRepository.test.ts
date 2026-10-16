@@ -449,4 +449,17 @@ describe('InMemoryRepository: single-entry writes', () => {
     await flushMicrotasks();
     expect(none).toHaveBeenCalledWith(null);
   });
+
+  it('subscribeFirstEntryAfter breaks a tied start by the smallest id', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [
+      entry({ id: 'z', start: 200 }),
+      entry({ id: 'a', start: 200 }),
+      entry({ id: 'm', start: 200 }),
+    ]);
+    const cb = vi.fn();
+    repo.subscribeFirstEntryAfter('u1', 100, cb, () => {});
+    await flushMicrotasks();
+    expect(cb.mock.calls[0]?.[0]?.id).toBe('a');
+  });
 });

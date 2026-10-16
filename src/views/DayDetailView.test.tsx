@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServicesProvider, type Services } from '../app/ServicesContext';
@@ -254,5 +254,58 @@ describe('DayDetailView', () => {
     renderDay(new FailingRepository());
     expect(await screen.findByRole('alert')).toHaveTextContent('Daten konnten nicht geladen werden.');
     expect(screen.queryByText('Lädt…')).not.toBeInTheDocument();
+  });
+
+  it('closes the edit form and the delete confirmation when their entry is deleted remotely (edge case 41)', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const target = entry('w', 'work', at(14, 10, 8), at(14, 10, 12));
+    const other = entry('o', 'work', at(14, 10, 13), at(14, 10, 14));
+    repo.seedEntries(UID, [target, other]);
+    renderDay(repo);
+
+    await user.click(within(await waitFor(() => itemFor('Arbeit 08:00 – 12:00 (4:00)'))).getByRole('button', { name: 'Bearbeiten' }));
+    expect(screen.getByRole('form', { name: 'Eintrag bearbeiten' })).toBeInTheDocument();
+
+    await act(async () => {
+      await repo.deleteEntry(UID, 'w');
+    });
+
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Eintrag bearbeiten' })).not.toBeInTheDocument());
+    expect(screen.queryByText('Arbeit 08:00 – 12:00 (4:00)')).not.toBeInTheDocument();
+    expect(screen.getByText('Arbeit 13:00 – 14:00 (1:00)')).toBeInTheDocument();
+
+    await user.click(within(itemFor('Arbeit 13:00 – 14:00 (1:00)')).getByRole('button', { name: 'Löschen' }));
+    expect(screen.getByRole('group', { name: 'Löschen bestätigen' })).toBeInTheDocument();
+
+    await act(async () => {
+      await repo.deleteEntry(UID, 'o');
+    });
+
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Löschen bestätigen' })).not.toBeInTheDocument());
+    expect(await screen.findByText('Keine Einträge an diesem Tag.')).toBeInTheDocument();
+  });
+
+  it('renders and sums pre-existing overlapping entries without crashing; a non-overlapping edit still succeeds (edge case 13)', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const a = entry('a', 'work', at(14, 10, 8), at(14, 10, 9));
+    const b = entry('b', 'work', at(14, 10, 8, 30), at(14, 10, 9, 30));
+    const c = entry('c', 'work', at(14, 10, 10), at(14, 10, 11));
+    repo.seedEntries(UID, [a, b, c]);
+    renderDay(repo);
+
+    expect(await waitFor(() => itemFor('Arbeit 08:00 – 09:00 (1:00)'))).toBeInTheDocument();
+    expect(itemFor('Arbeit 08:30 – 09:30 (1:00)')).toBeInTheDocument();
+    expect(itemFor('Arbeit 10:00 – 11:00 (1:00)')).toBeInTheDocument();
+    expect(totalValue('Gearbeitet')).toHaveTextContent('3:00');
+
+    await user.click(within(itemFor('Arbeit 10:00 – 11:00 (1:00)')).getByRole('button', { name: 'Bearbeiten' }));
+    await typeInto(user, 'Ende', '11:30');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(await screen.findByText('Arbeit 10:00 – 11:30 (1:30)')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(totalValue('Gearbeitet')).toHaveTextContent('3:30');
   });
 });
