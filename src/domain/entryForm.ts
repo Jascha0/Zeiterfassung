@@ -1,6 +1,6 @@
 import { shiftDay } from './calendar';
 import { localDateTimeToInstant, toDateKey, toTimeValue } from './localTime';
-import type { Entry, EntryChanges, EntryType } from './types';
+import type { Entry, EntryChanges, EntryLabels, EntryType, FieldChange } from './types';
 
 export type EndInputKind = 'none' | 'nextDayFlag' | 'date';
 
@@ -95,16 +95,34 @@ export function entryChanges(
   original: Entry,
   next: { type: EntryType; start: number; end: number | null },
   updatedAt: number,
+  labels?: EntryLabels,
 ): EntryChanges | null {
   const typeChanged = next.type !== original.type;
   const startChanged = next.start !== original.start;
   const endChanged = next.end !== null && next.end !== original.end;
-  if (!typeChanged && !startChanged && !endChanged) return null;
+  const desired: EntryLabels =
+    next.type === 'break'
+      ? { projectId: undefined, note: undefined }
+      : (labels ?? { projectId: original.projectId, note: original.note });
+  const projectId = fieldChange(original.projectId, desired.projectId);
+  const note = fieldChange(original.note, desired.note);
+  if (!typeChanged && !startChanged && !endChanged && projectId === null && note === null) return null;
   const changes: EntryChanges = {
     ...(typeChanged ? { type: next.type } : {}),
     ...(startChanged ? { start: next.start } : {}),
     ...(endChanged && next.end !== null ? { end: next.end } : {}),
+    ...(projectId !== null ? { projectId } : {}),
+    ...(note !== null ? { note } : {}),
     updatedAt,
   };
   return changes;
+}
+
+function fieldChange(original: string | undefined, desired: string | undefined): FieldChange<string> | null {
+  if (desired === original) return null;
+  return desired === undefined ? { kind: 'remove' } : { kind: 'set', value: desired };
+}
+
+export function changesTouchTime(changes: EntryChanges): boolean {
+  return changes.type !== undefined || changes.start !== undefined || changes.end !== undefined;
 }

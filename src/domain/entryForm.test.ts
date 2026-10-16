@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { shiftDay } from './calendar';
 import {
+  changesTouchTime,
   endInputKindFor,
   entryChanges,
   initialFormValues,
@@ -213,5 +214,99 @@ describe('entryChanges', () => {
     const open = entry({ end: null });
     const result = entryChanges(open, { type: 'work', start: local(2026, 10, 14, 9), end: null }, 5);
     expect(result).toEqual({ start: local(2026, 10, 14, 9), updatedAt: 5 });
+  });
+});
+
+describe('entryChanges with labels (slice 3)', () => {
+  const labelled = entry({ projectId: 'pA', note: 'x' });
+  const times = { type: 'work' as const, start: labelled.start, end: labelled.end };
+
+  it('type → break removes project and note', () => {
+    expect(entryChanges(labelled, { type: 'break', start: labelled.start, end: labelled.end }, 5)).toEqual({
+      type: 'break',
+      projectId: { kind: 'remove' },
+      note: { kind: 'remove' },
+      updatedAt: 5,
+    });
+  });
+
+  it('type → break ignores given labels', () => {
+    const result = entryChanges(labelled, { type: 'break', start: labelled.start, end: labelled.end }, 5, {
+      projectId: 'pB',
+      note: 'y',
+    });
+    expect(result).toEqual({ type: 'break', projectId: { kind: 'remove' }, note: { kind: 'remove' }, updatedAt: 5 });
+  });
+
+  it('type → break on an entry without labels produces no remove', () => {
+    const plain = entry();
+    const result = entryChanges(plain, { type: 'break', start: plain.start, end: plain.end }, 5);
+    expect(result).toEqual({ type: 'break', updatedAt: 5 });
+    expect(Object.keys(result as object)).toEqual(['type', 'updatedAt']);
+  });
+
+  it('project-only change sets the project and does not touch time', () => {
+    const result = entryChanges(labelled, times, 5, { projectId: 'pB', note: 'x' });
+    expect(result).toEqual({ projectId: { kind: 'set', value: 'pB' }, updatedAt: 5 });
+    expect(changesTouchTime(result!)).toBe(false);
+  });
+
+  it('clearing project and note produces remove', () => {
+    expect(entryChanges(labelled, times, 5, { projectId: undefined, note: undefined })).toEqual({
+      projectId: { kind: 'remove' },
+      note: { kind: 'remove' },
+      updatedAt: 5,
+    });
+  });
+
+  it('sets a note on an entry without one', () => {
+    const plain = entry();
+    expect(
+      entryChanges(plain, { type: 'work', start: plain.start, end: plain.end }, 5, { projectId: undefined, note: 'n' }),
+    ).toEqual({ note: { kind: 'set', value: 'n' }, updatedAt: 5 });
+  });
+
+  it('returns null when labels equal the original', () => {
+    expect(entryChanges(labelled, times, 5, { projectId: 'pA', note: 'x' })).toBeNull();
+  });
+
+  it('returns null for empty labels on an original without fields', () => {
+    const plain = entry();
+    expect(
+      entryChanges(plain, { type: 'work', start: plain.start, end: plain.end }, 5, {
+        projectId: undefined,
+        note: undefined,
+      }),
+    ).toBeNull();
+  });
+
+  it('keeps labels unchanged when labels are omitted on a work entry', () => {
+    const end = local(2026, 10, 14, 13);
+    expect(entryChanges(labelled, { type: 'work', start: labelled.start, end }, 5)).toEqual({ end, updatedAt: 5 });
+  });
+
+  it('orders keys type, start, end, projectId, note, updatedAt', () => {
+    const plainWork = entry({ type: 'break' });
+    const result = entryChanges(
+      plainWork,
+      { type: 'work', start: local(2026, 10, 14, 9), end: local(2026, 10, 14, 13) },
+      5,
+      { projectId: 'pB', note: 'y' },
+    );
+    expect(Object.keys(result as object)).toEqual(['type', 'start', 'end', 'projectId', 'note', 'updatedAt']);
+  });
+});
+
+describe('changesTouchTime (slice 3)', () => {
+  it('is false for updatedAt only plus labels', () => {
+    expect(changesTouchTime({ note: { kind: 'remove' }, updatedAt: 1 })).toBe(false);
+  });
+
+  it.each([
+    ['type', { type: 'break' as const, updatedAt: 1 }],
+    ['start', { start: 10, updatedAt: 1 }],
+    ['end', { end: 20, updatedAt: 1 }],
+  ])('is true when %s is defined', (_name, changes) => {
+    expect(changesTouchTime(changes)).toBe(true);
   });
 });

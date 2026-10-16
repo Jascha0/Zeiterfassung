@@ -32,8 +32,19 @@ export interface NewClosedEntry {
   type: EntryType;
   start: number;
   end: number;
+  projectId?: string;
+  note?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+/** Change of an optional entry field (0028): set to a value, or remove the field. */
+export type FieldChange<T> = { kind: 'set'; value: T } | { kind: 'remove' };
+
+/** Desired project/note of a work entry. undefined = none (field absent). */
+export interface EntryLabels {
+  projectId: string | undefined;
+  note: string | undefined;
 }
 
 /** Partial update of one entry. Only defined fields are written; updatedAt always. */
@@ -41,6 +52,8 @@ export interface EntryChanges {
   type?: EntryType;
   start?: number;
   end?: number;
+  projectId?: FieldChange<string>;
+  note?: FieldChange<string>;
   updatedAt: number;
 }
 
