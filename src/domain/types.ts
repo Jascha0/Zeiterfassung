@@ -17,6 +17,7 @@ export interface NewEntry {
   type: EntryType;
   start: number;
   end: null;
+  projectId?: string;
   createdAt: number;
   updatedAt: number;
 }

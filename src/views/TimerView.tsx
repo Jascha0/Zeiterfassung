@@ -22,6 +22,7 @@ const ACTION_LABELS: Record<TimerAction, string> = {
   pause: 'Pause',
   resume: 'Weiter',
   end: 'Arbeitstag beenden',
+  switch: 'Projekt wechseln',
 };
 
 const MULTIPLE_OPEN_WARNING =
