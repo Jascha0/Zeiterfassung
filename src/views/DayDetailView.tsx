@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useServices } from '../app/ServicesContext';
 import { useToast } from '../app/ToastContext';
+import { ProjectLabel } from '../components/ProjectLabel';
 import { mapWriteError } from '../data/writeErrors';
 import { entriesStartingIn, mergeEntries, shiftDay } from '../domain/calendar';
 import { formatHoursMinutes, formatLongDate } from '../domain/format';
+import { truncateNote } from '../domain/notes';
+import { projectsById } from '../domain/projects';
+import { projectDayTotals } from '../domain/projectTotals';
 import { deriveTimerStatus } from '../domain/timer';
 import { dailyTotals, dayRange } from '../domain/totals';
 import { dayDetailRange } from '../domain/validation';
 import { useEntriesInRange } from '../hooks/useEntriesInRange';
 import { useNow } from '../hooks/useNow';
 import { useOpenEntries } from '../hooks/useOpenEntries';
+import { useProjects } from '../hooks/useProjects';
 import { EntryForm } from './EntryForm';
 import { entryLine } from './entryMessages';
+import { NONE_GROUP_LABEL } from './projectMessages';
 
 type Panel = { kind: 'none' } | { kind: 'add' } | { kind: 'edit'; id: string } | { kind: 'delete'; id: string };
 
@@ -29,12 +35,15 @@ export function DayDetailView(props: {
   const now = useNow(30_000);
   const windowData = useEntriesInRange(uid, dayDetailRange(dayStart));
   const open = useOpenEntries(uid);
+  const projectData = useProjects(uid);
   const [panel, setPanel] = useState<Panel>(NO_PANEL);
 
-  const loading = windowData.loading || open.loading;
+  const loading = windowData.loading || open.loading || (projectData.loading && projectData.error === null);
   const error = windowData.error ?? open.error;
   const dayEntries = entriesStartingIn(mergeEntries(windowData.entries, open.entries), dayRange(dayStart));
   const totals = dailyTotals(dayEntries, dayStart, now);
+  const byId = projectsById(projectData.projects);
+  const groups = projectDayTotals(dayEntries, dayStart, byId, now);
   const activeId = deriveTimerStatus(open.entries).activeEntry?.id ?? null;
   const isToday = dayStart >= dayRange(now).start;
 
@@ -68,6 +77,7 @@ export function DayDetailView(props: {
         </div>
         <h2>{formatLongDate(dayStart)}</h2>
         {error !== null && <p role="alert">{error}</p>}
+        {projectData.error !== null && <p role="alert">{projectData.error}</p>}
         {loading ? (
           error === null && <p>Lädt…</p>
         ) : (
@@ -82,6 +92,27 @@ export function DayDetailView(props: {
                 <dd>{formatHoursMinutes(totals.breakMs)}</dd>
               </div>
             </dl>
+            {groups.length > 0 && (
+              <div role="group" aria-label="Arbeitszeit nach Projekt">
+                <h3>Nach Projekt</h3>
+                <dl className="totals project-totals">
+                  {groups.map((group) => (
+                    <div key={group.kind === 'project' ? `project-${group.project.id}` : group.kind}>
+                      <dt>
+                        {group.kind === 'project' ? (
+                          <ProjectLabel project={group.project} />
+                        ) : group.kind === 'none' ? (
+                          NONE_GROUP_LABEL
+                        ) : (
+                          <ProjectLabel project={undefined} />
+                        )}
+                      </dt>
+                      <dd>{formatHoursMinutes(group.workMs)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
             {dayEntries.length === 0 ? (
               <p>Keine Einträge an diesem Tag.</p>
             ) : (
@@ -89,6 +120,14 @@ export function DayDetailView(props: {
                 {dayEntries.map((entry) => (
                   <li key={entry.id}>
                     <span>{entryLine(entry, now)}</span>
+                    {entry.type === 'work' && entry.projectId !== undefined && (
+                      <ProjectLabel project={byId.get(entry.projectId)} />
+                    )}
+                    {entry.type === 'work' && entry.note !== undefined && (
+                      <span className="entry-note" title={entry.note}>
+                        {truncateNote(entry.note)}
+                      </span>
+                    )}
                     {entry.end === null && entry.id !== activeId && <span className="badge">offen – nicht aktiv</span>}
                     <span className="button-row entry-actions">
                       <button type="button" className="button-link" onClick={() => setPanel({ kind: 'edit', id: entry.id })}>
@@ -108,6 +147,7 @@ export function DayDetailView(props: {
                         mode={{ kind: 'edit', dayStart, entry }}
                         baseEntries={windowData.entries}
                         openEntries={open.entries}
+                        projects={projectData.projects}
                         onDone={close}
                       />
                     )}
@@ -136,6 +176,7 @@ export function DayDetailView(props: {
                   mode={{ kind: 'add', dayStart }}
                   baseEntries={windowData.entries}
                   openEntries={open.entries}
+                  projects={projectData.projects}
                   onDone={close}
                 />
               </>

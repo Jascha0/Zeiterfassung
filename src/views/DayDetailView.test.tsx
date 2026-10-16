@@ -6,7 +6,8 @@ import { ToastProvider } from '../app/ToastContext';
 import type { Unsubscribe } from '../auth/authTypes';
 import { InMemoryRepository } from '../data/inMemoryRepository';
 import { shiftDay } from '../domain/calendar';
-import type { Entry, TimeRange } from '../domain/types';
+import { truncateNote } from '../domain/notes';
+import type { Entry, Project, TimeRange } from '../domain/types';
 import { FakeAuthService } from '../test/fakeAuthService';
 import { DayDetailView } from './DayDetailView';
 
@@ -307,5 +308,228 @@ describe('DayDetailView', () => {
     expect(await screen.findByText('Arbeit 10:00 – 11:30 (1:30)')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(totalValue('Gearbeitet')).toHaveTextContent('3:30');
+  });
+});
+
+describe('DayDetailView: projects (slice 3)', () => {
+  function project(id: string, name: string, color: Project['color'] = 'blue', archived = false): Project {
+    return { id, name, color, archived, createdAt: 0, updatedAt: 0 };
+  }
+
+  function labelled(id: string, type: Entry['type'], start: number, end: number | null, labels: { projectId?: string; note?: string } = {}): Entry {
+    return { ...entry(id, type, start, end), ...labels };
+  }
+
+  function renderWithProjects(repo: InMemoryRepository, dayStart: number = DAY) {
+    const services: Services = { auth: new FakeAuthService(), entries: repo, settings: repo, projects: repo };
+    return render(
+      <ServicesProvider services={services}>
+        <ToastProvider>
+          <DayDetailView uid={UID} dayStart={dayStart} onDayChange={vi.fn()} onBack={vi.fn()} />
+        </ToastProvider>
+      </ServicesProvider>,
+    );
+  }
+
+  function projectTotalRows(): Array<[string | null | undefined, string | null | undefined]> {
+    const group = screen.getByRole('group', { name: 'Arbeitszeit nach Projekt' });
+    return Array.from(group.querySelectorAll('dl > div')).map((row) => [
+      row.querySelector('dt')?.textContent,
+      row.querySelector('dd')?.textContent,
+    ]);
+  }
+
+  it('shows per-project totals', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedProjects(UID, [project('pA', 'Kunde A')]);
+    repo.seedEntries(UID, [
+      labelled('w1', 'work', at(14, 10, 8), at(14, 10, 11), { projectId: 'pA' }),
+      labelled('b1', 'break', at(14, 10, 11), at(14, 10, 11, 15)),
+      labelled('w2', 'work', at(14, 10, 11, 15), at(14, 10, 12, 15)),
+    ]);
+    renderWithProjects(repo);
+
+    await screen.findByRole('group', { name: 'Arbeitszeit nach Projekt' });
+    expect(projectTotalRows()).toEqual([
+      ['Kunde A', '3:00'],
+      ['Ohne Projekt', '1:00'],
+    ]);
+    expect(totalValue('Gearbeitet')).toHaveTextContent('4:00');
+  });
+
+  it('break is excluded and the groups sum to "Gearbeitet" (edge 31)', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedProjects(UID, [project('pA', 'Kunde A'), project('pB', 'Kunde B', 'green')]);
+    repo.seedEntries(UID, [
+      labelled('w1', 'work', at(14, 10, 8), at(14, 10, 9, 30), { projectId: 'pB' }),
+      labelled('b1', 'break', at(14, 10, 9, 30), at(14, 10, 10)),
+      labelled('w2', 'work', at(14, 10, 10), at(14, 10, 12), { projectId: 'pA' }),
+      labelled('w3', 'work', at(14, 10, 13), at(14, 10, 13, 30)),
+    ]);
+    renderWithProjects(repo);
+
+    await screen.findByRole('group', { name: 'Arbeitszeit nach Projekt' });
+    expect(projectTotalRows()).toEqual([
+      ['Kunde A', '2:00'],
+      ['Kunde B', '1:30'],
+      ['Ohne Projekt', '0:30'],
+    ]);
+    expect(totalValue('Gearbeitet')).toHaveTextContent('4:00');
+    expect(totalValue('Pausen')).toHaveTextContent('0:30');
+  });
+
+  it('counts a running block up live (edge 32)', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedProjects(UID, [project('pA', 'Kunde A')]);
+    repo.seedEntries(UID, [labelled('w', 'work', at(16, 10, 14), null, { projectId: 'pA' })]);
+    renderWithProjects(repo, TODAY);
+
+    await screen.findByRole('group', { name: 'Arbeitszeit nach Projekt' });
+    expect(projectTotalRows()).toEqual([['Kunde A', '1:00']]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(projectTotalRows()).toEqual([['Kunde A', '1:01']]);
+    expect(totalValue('Gearbeitet')).toHaveTextContent('1:01');
+  });
+
+  it('shows an unknown projectId as "Unbekanntes Projekt" in the list and the totals (edge 33)', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedProjects(UID, [project('pA', 'Kunde A')]);
+    repo.seedEntries(UID, [labelled('w', 'work', at(14, 10, 8), at(14, 10, 10), { projectId: 'ghost' })]);
+    renderWithProjects(repo);
+
+    const item = await waitFor(() => itemFor('Arbeit 08:00 – 10:00 (2:00)'));
+    expect(within(item).getByText('Unbekanntes Projekt')).toBeInTheDocument();
+    expect(item.querySelector('.project-dot')).toHaveClass('project-color-gray');
+    expect(projectTotalRows()).toEqual([['Unbekanntes Projekt', '2:00']]);
+    const group = screen.getByRole('group', { name: 'Arbeitszeit nach Projekt' });
+    expect(group.querySelector('.project-dot')).toHaveClass('project-color-gray');
+  });
+
+  it('shows no per-project group for a day with only breaks (edge 34)', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedProjects(UID, [project('pA', 'Kunde A')]);
+    repo.seedEntries(UID, [labelled('b', 'break', at(14, 10, 12), at(14, 10, 12, 30))]);
+    renderWithProjects(repo);
+
+    await waitFor(() => itemFor('Pause 12:00 – 12:30 (0:30)'));
+    expect(screen.queryByRole('group', { name: 'Arbeitszeit nach Projekt' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Nach Projekt')).not.toBeInTheDocument();
+  });
+
+  it('shows no per-project group for a day without entries (edge 34)', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedProjects(UID, [project('pA', 'Kunde A')]);
+    renderWithProjects(repo);
+
+    await screen.findByText('Keine Einträge an diesem Tag.');
+    expect(screen.queryByRole('group', { name: 'Arbeitszeit nach Projekt' })).not.toBeInTheDocument();
+  });
+
+  it('lists the project name as text next to the dot and the truncated note with the full note in title (edge 35)', async () => {
+    const longNote = 'Abstimmung mit dem Kunden über die neue Schnittstelle und die offenen Punkte der Abnahme';
+    const repo = new InMemoryRepository();
+    repo.seedProjects(UID, [project('pA', 'Kunde A', 'orange')]);
+    repo.seedEntries(UID, [
+      labelled('w', 'work', at(14, 10, 8), at(14, 10, 12), { projectId: 'pA', note: longNote }),
+      labelled('b', 'break', at(14, 10, 12), at(14, 10, 12, 30)),
+    ]);
+    renderWithProjects(repo);
+
+    const item = await waitFor(() => itemFor('Arbeit 08:00 – 12:00 (4:00)'));
+    expect(item.querySelector('span')?.textContent).toBe('Arbeit 08:00 – 12:00 (4:00)');
+    expect(within(item).getByText('Kunde A')).toBeInTheDocument();
+    expect(item.querySelector('.project-dot')).toHaveClass('project-color-orange');
+    expect(truncateNote(longNote)).not.toBe(longNote);
+    const note = within(item).getByText(truncateNote(longNote));
+    expect(note).toHaveClass('entry-note');
+    expect(note).toHaveAttribute('title', longNote);
+
+    const breakItem = itemFor('Pause 12:00 – 12:30 (0:30)');
+    expect(breakItem.querySelector('.project-label')).toBeNull();
+    expect(breakItem.querySelector('.entry-note')).toBeNull();
+  });
+
+  it('shows archived projects with "(archiviert)", hides them from the picker of another entry, and restores them (edge 8)', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    repo.seedProjects(UID, [project('pA', 'Kunde A', 'blue', true), project('pB', 'Kunde B', 'green')]);
+    repo.seedEntries(UID, [
+      labelled('w1', 'work', at(14, 10, 8), at(14, 10, 10), { projectId: 'pA' }),
+      labelled('w2', 'work', at(14, 10, 10), at(14, 10, 11)),
+    ]);
+    renderWithProjects(repo);
+
+    const item = await waitFor(() => itemFor('Arbeit 08:00 – 10:00 (2:00)'));
+    expect(within(item).getByText('Kunde A (archiviert)')).toBeInTheDocument();
+    const group = screen.getByRole('group', { name: 'Arbeitszeit nach Projekt' });
+    expect(within(group).getByText('Kunde A (archiviert)')).toBeInTheDocument();
+
+    await user.click(within(itemFor('Arbeit 10:00 – 11:00 (1:00)')).getByRole('button', { name: 'Bearbeiten' }));
+    const optionTexts = () =>
+      within(screen.getByLabelText('Projekt'))
+        .getAllByRole('option')
+        .map((option) => option.textContent);
+    expect(optionTexts()).toEqual(['Kein Projekt', 'Kunde B · Grün']);
+
+    act(() => {
+      repo.seedProjects(UID, [project('pA', 'Kunde A'), project('pB', 'Kunde B', 'green')]);
+    });
+    await waitFor(() => expect(optionTexts()).toEqual(['Kein Projekt', 'Kunde A · Blau', 'Kunde B · Grün']));
+    expect(within(itemFor('Arbeit 08:00 – 10:00 (2:00)')).getByText('Kunde A')).toBeInTheDocument();
+  });
+
+  it('updates labels and totals after a rename/recolor on another device without writing entries (edge 27)', async () => {
+    const repo = new InMemoryRepository();
+    repo.seedProjects(UID, [project('pA', 'Kunde A')]);
+    repo.seedEntries(UID, [labelled('w', 'work', at(14, 10, 8), at(14, 10, 10), { projectId: 'pA' })]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    const transitionSpy = vi.spyOn(repo, 'applyTransition');
+    const createSpy = vi.spyOn(repo, 'createEntry');
+    renderWithProjects(repo);
+
+    const item = await waitFor(() => itemFor('Arbeit 08:00 – 10:00 (2:00)'));
+    expect(within(item).getByText('Kunde A')).toBeInTheDocument();
+
+    act(() => {
+      repo.seedProjects(UID, [project('pA', 'Kunde Alpha', 'red')]);
+    });
+
+    await waitFor(() => expect(within(itemFor('Arbeit 08:00 – 10:00 (2:00)')).getByText('Kunde Alpha')).toBeInTheDocument());
+    expect(itemFor('Arbeit 08:00 – 10:00 (2:00)').querySelector('.project-dot')).toHaveClass('project-color-red');
+    expect(projectTotalRows()).toEqual([['Kunde Alpha', '2:00']]);
+    const group = screen.getByRole('group', { name: 'Arbeitszeit nach Projekt' });
+    expect(group.querySelector('.project-dot')).toHaveClass('project-color-red');
+    expect(screen.queryByText('Kunde A')).not.toBeInTheDocument();
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(transitionSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows the load alert on a projects subscription error, still lists entries, labels as "Unbekanntes Projekt" (edge 38)', async () => {
+    class FailingProjectsRepository extends InMemoryRepository {
+      override subscribeProjects(
+        _uid: string,
+        _onChange: (projects: Project[]) => void,
+        onError: (error: Error) => void,
+      ): Unsubscribe {
+        queueMicrotask(() => onError(new Error('permission-denied')));
+        return () => {};
+      }
+    }
+    const repo = new FailingProjectsRepository();
+    repo.seedEntries(UID, [
+      labelled('w1', 'work', at(14, 10, 8), at(14, 10, 10), { projectId: 'pA' }),
+      labelled('w2', 'work', at(14, 10, 10), at(14, 10, 11)),
+    ]);
+    renderWithProjects(repo);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Daten konnten nicht geladen werden.');
+    const item = await waitFor(() => itemFor('Arbeit 08:00 – 10:00 (2:00)'));
+    expect(within(item).getByText('Unbekanntes Projekt')).toBeInTheDocument();
+    expect(itemFor('Arbeit 10:00 – 11:00 (1:00)')).toBeInTheDocument();
+    expect(screen.queryByText('Lädt…')).not.toBeInTheDocument();
   });
 });
