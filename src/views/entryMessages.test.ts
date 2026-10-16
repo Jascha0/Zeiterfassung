@@ -101,7 +101,7 @@ describe('validationReasonMessage', () => {
     [{ kind: 'fieldNotEditable', field: 'type' }, 'Der Typ eines offenen Eintrags kann nicht geändert werden.'],
     [
       { kind: 'fieldNotEditable', field: 'end' },
-      'Beim laufenden Eintrag kann nur der Beginn geändert werden. Beende ihn über den Timer.',
+      'Beim laufenden Eintrag können nur Beginn, Projekt und Notiz geändert werden. Beende ihn über den Timer.',
     ],
     [{ kind: 'endNotAfterStart' }, 'Das Ende muss nach dem Beginn liegen.'],
     [{ kind: 'inFuture', field: 'start' }, 'Der Beginn darf nicht in der Zukunft liegen.'],

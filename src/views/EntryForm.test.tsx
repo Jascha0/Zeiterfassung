@@ -5,7 +5,7 @@ import { ServicesProvider, type Services } from '../app/ServicesContext';
 import { ToastProvider } from '../app/ToastContext';
 import type { Unsubscribe } from '../auth/authTypes';
 import { InMemoryRepository } from '../data/inMemoryRepository';
-import type { Entry, TimeRange } from '../domain/types';
+import type { Entry, Project, TimeRange } from '../domain/types';
 import { FakeAuthService } from '../test/fakeAuthService';
 import { EntryForm, type EntryFormMode } from './EntryForm';
 
@@ -167,7 +167,7 @@ describe('EntryForm: edit mode', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it('for the active open entry shows only "Beginn" and writes only the start', async () => {
+  it('for the active open entry shows Beginn, Projekt and Notiz (not Ende/Typ) and writes only the start', async () => {
     const user = userEvent.setup();
     const repo = new InMemoryRepository();
     const active = entry('a1', 'work', at(16, 10, 14), null);
@@ -175,7 +175,7 @@ describe('EntryForm: edit mode', () => {
     const updateSpy = vi.spyOn(repo, 'updateEntry');
     const { onDone } = renderForm(repo, { kind: 'edit', dayStart: TODAY, entry: active }, [active], [active]);
 
-    expect(screen.getByText('Dieser Eintrag läuft. Nur der Beginn kann geändert werden.')).toBeInTheDocument();
+    expect(screen.getByText('Dieser Eintrag läuft. Nur Beginn, Projekt und Notiz können geändert werden.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Ende')).not.toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Typ' })).not.toBeInTheDocument();
 
@@ -292,5 +292,397 @@ describe('EntryForm: resolve mode', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('bitte lösche diesen offenen Eintrag mit „Löschen“');
     expect(repo.getEntries(UID).find((e) => e.id === 'old')?.end).toBeNull();
+  });
+});
+
+describe('EntryForm: project and note (slice 3)', () => {
+  function project(id: string, name: string, overrides: Partial<Project> = {}): Project {
+    return { id, name, color: 'blue', archived: false, createdAt: 0, updatedAt: 0, ...overrides };
+  }
+
+  function renderWithProjects(
+    repo: InMemoryRepository,
+    mode: EntryFormMode,
+    projects: readonly Project[],
+    baseEntries: readonly Entry[] = [],
+    openEntries: readonly Entry[] = [],
+  ) {
+    const onDone = vi.fn();
+    const services: Services = { auth: new FakeAuthService(), entries: repo, settings: repo, projects: repo };
+    const view = render(
+      <ServicesProvider services={services}>
+        <ToastProvider>
+          <EntryForm
+            uid={UID}
+            mode={mode}
+            baseEntries={baseEntries}
+            openEntries={openEntries}
+            projects={projects}
+            onDone={onDone}
+          />
+        </ToastProvider>
+      </ServicesProvider>,
+    );
+    const rerenderWith = (next: readonly Project[]) =>
+      view.rerender(
+        <ServicesProvider services={services}>
+          <ToastProvider>
+            <EntryForm
+              uid={UID}
+              mode={mode}
+              baseEntries={baseEntries}
+              openEntries={openEntries}
+              projects={next}
+              onDone={onDone}
+            />
+          </ToastProvider>
+        </ServicesProvider>,
+      );
+    return { onDone, rerenderWith };
+  }
+
+  const kundeA = project('pA', 'Kunde A');
+
+  it('adds a work entry 08:00–12:00 with project and note', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const { onDone } = renderWithProjects(repo, { kind: 'add', dayStart: DAY }, [kundeA]);
+
+    await typeInto(user, 'Beginn', '08:00');
+    await typeInto(user, 'Ende', '12:00');
+    await user.selectOptions(screen.getByLabelText('Projekt'), 'pA');
+    await user.type(screen.getByLabelText('Notiz'), 'Kundentermin');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    const stored = repo.getEntries(UID);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      type: 'work',
+      start: at(14, 10, 8),
+      end: at(14, 10, 12),
+      projectId: 'pA',
+      note: 'Kundentermin',
+    });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  function labelled(id: string, type: Entry['type'], start: number, end: number | null, labels: Partial<Entry>): Entry {
+    return { ...entry(id, type, start, end), ...labels };
+  }
+
+  async function pasteInto(user: ReturnType<typeof userEvent.setup>, label: string, value: string) {
+    const field = screen.getByLabelText(label);
+    await user.clear(field);
+    if (value !== '') {
+      await user.click(field);
+      await user.paste(value);
+    }
+  }
+
+  it('adds with "Kein Projekt" and an empty note without projectId/note keys', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    renderWithProjects(repo, { kind: 'add', dayStart: DAY }, [kundeA]);
+
+    expect(screen.getByLabelText('Projekt')).toHaveValue('');
+    await typeInto(user, 'Beginn', '08:00');
+    await typeInto(user, 'Ende', '12:00');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    const [stored] = repo.getEntries(UID);
+    expect(stored).toBeDefined();
+    expect('projectId' in stored!).toBe(false);
+    expect('note' in stored!).toBe(false);
+  });
+
+  it('lists "Kein Projekt" first, then active projects by German collation labelled "Name · Farbe"', () => {
+    const repo = new InMemoryRepository();
+    const projects = [
+      project('pB', 'b', { color: 'green' }),
+      project('pX', 'Ärger', { color: 'red' }),
+      project('pY', 'Alt', { archived: true }),
+      project('pZ', 'a', { color: 'teal' }),
+    ];
+    renderWithProjects(repo, { kind: 'add', dayStart: DAY }, projects);
+
+    const options = within(screen.getByLabelText('Projekt')).getAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['Kein Projekt', 'a · Türkis', 'Ärger · Rot', 'b · Grün']);
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual(['', 'pZ', 'pX', 'pB']);
+  });
+
+  it('edit with an archived project keeps it selected and writes nothing when unchanged', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = labelled('e1', 'work', at(14, 10, 8), at(14, 10, 12), { projectId: 'pA' });
+    repo.seedEntries(UID, [original]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    const archived = project('pA', 'Kunde A', { archived: true });
+    const { onDone } = renderWithProjects(repo, { kind: 'edit', dayStart: DAY, entry: original }, [archived], [original]);
+
+    const select = screen.getByLabelText('Projekt');
+    expect(select).toHaveValue('pA');
+    expect(within(select).getByRole('option', { selected: true })).toHaveTextContent('Kunde A (archiviert) · Blau');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(repo.getEntries(UID)[0]).toEqual(original);
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a project archived on another device while the form is open', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = entry('e1', 'work', at(14, 10, 8), at(14, 10, 12));
+    repo.seedEntries(UID, [original]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    const { onDone, rerenderWith } = renderWithProjects(
+      repo,
+      { kind: 'edit', dayStart: DAY, entry: original },
+      [kundeA],
+      [original],
+    );
+
+    await user.selectOptions(screen.getByLabelText('Projekt'), 'pA');
+    rerenderWith([project('pA', 'Kunde A', { archived: true })]);
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Das gewählte Projekt ist nicht mehr verfügbar.');
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('edit: "Kein Projekt" and an emptied note remove both keys', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = labelled('e1', 'work', at(14, 10, 8), at(14, 10, 12), { projectId: 'pA', note: 'alt' });
+    repo.seedEntries(UID, [original]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    renderWithProjects(repo, { kind: 'edit', dayStart: DAY, entry: original }, [kundeA], [original]);
+
+    expect(screen.getByLabelText('Notiz')).toHaveValue('alt');
+    await user.selectOptions(screen.getByLabelText('Projekt'), '');
+    await user.clear(screen.getByLabelText('Notiz'));
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(updateSpy.mock.calls[0]![2]).toEqual({
+      projectId: { kind: 'remove' },
+      note: { kind: 'remove' },
+      updatedAt: Date.now(),
+    });
+    const [stored] = repo.getEntries(UID);
+    expect('projectId' in stored!).toBe(false);
+    expect('note' in stored!).toBe(false);
+  });
+
+  it('changing to Pause shows the notice, hides the fields and removes project and note in one write', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = labelled('e1', 'work', at(14, 10, 8), at(14, 10, 12), { projectId: 'pA', note: 'x' });
+    repo.seedEntries(UID, [original]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    renderWithProjects(repo, { kind: 'edit', dayStart: DAY, entry: original }, [kundeA], [original]);
+
+    const notice = 'Beim Speichern als Pause werden Projekt und Notiz entfernt.';
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'Pause' }));
+
+    expect(screen.getByText(notice)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Projekt')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Notiz')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(updateSpy.mock.calls[0]![2]).toEqual({
+      type: 'break',
+      projectId: { kind: 'remove' },
+      note: { kind: 'remove' },
+      updatedAt: Date.now(),
+    });
+    const [stored] = repo.getEntries(UID);
+    expect(stored?.type).toBe('break');
+    expect('projectId' in stored!).toBe(false);
+    expect('note' in stored!).toBe(false);
+  });
+
+  it('shows no break notice for a work entry without project and note', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = entry('e1', 'work', at(14, 10, 8), at(14, 10, 12));
+    renderWithProjects(repo, { kind: 'edit', dayStart: DAY, entry: original }, [kundeA], [original]);
+
+    await user.click(screen.getByRole('radio', { name: 'Pause' }));
+    expect(screen.queryByText('Beim Speichern als Pause werden Projekt und Notiz entfernt.')).not.toBeInTheDocument();
+  });
+
+  it('saves a project-only edit of an entry that overlaps another entry (0030)', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = entry('e1', 'work', at(14, 10, 8), at(14, 10, 12));
+    const overlapping = entry('e2', 'work', at(14, 10, 10), at(14, 10, 11));
+    repo.seedEntries(UID, [original, overlapping]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    const { onDone } = renderWithProjects(
+      repo,
+      { kind: 'edit', dayStart: DAY, entry: original },
+      [kundeA],
+      [original, overlapping],
+    );
+
+    await user.selectOptions(screen.getByLabelText('Projekt'), 'pA');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(updateSpy.mock.calls[0]![2]).toEqual({ projectId: { kind: 'set', value: 'pA' }, updatedAt: Date.now() });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('still validates when the time changes together with the project', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = entry('e1', 'work', at(14, 10, 8), at(14, 10, 12));
+    const overlapping = entry('e2', 'work', at(14, 10, 10), at(14, 10, 11));
+    repo.seedEntries(UID, [original, overlapping]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    renderWithProjects(repo, { kind: 'edit', dayStart: DAY, entry: original }, [kundeA], [original, overlapping]);
+
+    await user.selectOptions(screen.getByLabelText('Projekt'), 'pA');
+    await typeInto(user, 'Ende', '12:30');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Überschneidet sich mit: Arbeit 14.10.2026 10:00–11:00.');
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('closes an unchanged edit without validating or writing (OQ 8)', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = entry('e1', 'work', at(14, 10, 8), at(14, 10, 12));
+    const overlapping = entry('e2', 'work', at(14, 10, 10), at(14, 10, 11));
+    repo.seedEntries(UID, [original, overlapping]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    const { onDone } = renderWithProjects(
+      repo,
+      { kind: 'edit', dayStart: DAY, entry: original },
+      [kundeA],
+      [original, overlapping],
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('active open entry: shows Projekt and Notiz, and a project-only change writes projectId + updatedAt', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const active = entry('a1', 'work', at(16, 10, 14), null);
+    repo.seedEntries(UID, [active]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    renderWithProjects(repo, { kind: 'edit', dayStart: TODAY, entry: active }, [kundeA], [active], [active]);
+
+    expect(screen.getByText('Dieser Eintrag läuft. Nur Beginn, Projekt und Notiz können geändert werden.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Projekt')).toBeInTheDocument();
+    expect(screen.getByLabelText('Notiz')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Ende')).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Typ' })).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Projekt'), 'pA');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(Object.keys(updateSpy.mock.calls[0]![2])).toEqual(['projectId', 'updatedAt']);
+    expect(repo.getEntries(UID)[0]).toMatchObject({ projectId: 'pA', end: null });
+  });
+
+  it('accepts a 500-char note and rejects a 501-char note inline', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = entry('e1', 'work', at(14, 10, 8), at(14, 10, 12));
+    repo.seedEntries(UID, [original]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    const { onDone } = renderWithProjects(repo, { kind: 'edit', dayStart: DAY, entry: original }, [kundeA], [original]);
+
+    await pasteInto(user, 'Notiz', 'x'.repeat(501));
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Die Notiz darf höchstens 500 Zeichen lang sein.');
+    expect(screen.getByLabelText('Notiz')).toHaveAttribute('aria-describedby', alert.id);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+
+    await pasteInto(user, 'Notiz', 'x'.repeat(500));
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(repo.getEntries(UID)[0]?.note).toBe('x'.repeat(500));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores a whitespace-only note as no note (removes an existing one)', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = labelled('e1', 'work', at(14, 10, 8), at(14, 10, 12), { note: 'alt' });
+    repo.seedEntries(UID, [original]);
+    renderWithProjects(repo, { kind: 'edit', dayStart: DAY, entry: original }, [kundeA], [original]);
+
+    await pasteInto(user, 'Notiz', '   \n  ');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect('note' in repo.getEntries(UID)[0]!).toBe(false);
+  });
+
+  it('stores the note trimmed when adding', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    renderWithProjects(repo, { kind: 'add', dayStart: DAY }, [kundeA]);
+
+    await typeInto(user, 'Beginn', '08:00');
+    await typeInto(user, 'Ende', '12:00');
+    await pasteInto(user, 'Notiz', '  Kundentermin  ');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(repo.getEntries(UID)[0]?.note).toBe('Kundentermin');
+  });
+
+  it('keeps an unknown projectId as "Unbekanntes Projekt" and does not remove it on save', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = labelled('e1', 'work', at(14, 10, 8), at(14, 10, 12), { projectId: 'ghost' });
+    repo.seedEntries(UID, [original]);
+    const updateSpy = vi.spyOn(repo, 'updateEntry');
+    renderWithProjects(repo, { kind: 'edit', dayStart: DAY, entry: original }, [kundeA], [original]);
+
+    const select = screen.getByLabelText('Projekt');
+    expect(select).toHaveValue('ghost');
+    expect(within(select).getByRole('option', { selected: true })).toHaveTextContent('Unbekanntes Projekt');
+    await typeInto(user, 'Ende', '13:00');
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(updateSpy.mock.calls[0]![2]).toEqual({ end: at(14, 10, 13), updatedAt: Date.now() });
+    expect(repo.getEntries(UID)[0]?.projectId).toBe('ghost');
+  });
+
+  it('shows the toast and reverts when a project edit is rejected', async () => {
+    const user = userEvent.setup();
+    const repo = new InMemoryRepository();
+    const original = entry('e1', 'work', at(14, 10, 8), at(14, 10, 12));
+    repo.seedEntries(UID, [original]);
+    renderWithProjects(repo, { kind: 'edit', dayStart: DAY, entry: original }, [kundeA], [original]);
+
+    await user.selectOptions(screen.getByLabelText('Projekt'), 'pA');
+    repo.failNextWrite(Object.assign(new Error('denied'), { code: 'permission-denied' }));
+    await user.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    const toastRegion = screen.getByRole('status');
+    await waitFor(() =>
+      expect(within(toastRegion).getByText('Speichern fehlgeschlagen: keine Berechtigung.')).toBeInTheDocument(),
+    );
+    expect('projectId' in repo.getEntries(UID)[0]!).toBe(false);
   });
 });

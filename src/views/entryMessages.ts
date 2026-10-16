@@ -52,7 +52,7 @@ export function validationReasonMessage(
     case 'fieldNotEditable':
       return reason.field === 'type'
         ? 'Der Typ eines offenen Eintrags kann nicht geändert werden.'
-        : 'Beim laufenden Eintrag kann nur der Beginn geändert werden. Beende ihn über den Timer.';
+        : 'Beim laufenden Eintrag können nur Beginn, Projekt und Notiz geändert werden. Beende ihn über den Timer.';
     case 'endNotAfterStart':
       return 'Das Ende muss nach dem Beginn liegen.';
     case 'inFuture':

@@ -197,7 +197,7 @@ describe('DayDetailView', () => {
     await waitFor(() => expect(screen.queryByText(/^Pause 14:00/)).not.toBeInTheDocument());
     expect(screen.queryByText('offen – nicht aktiv')).not.toBeInTheDocument();
     await user.click(within(itemFor(/^Arbeit 09:00 – läuft/)).getByRole('button', { name: 'Bearbeiten' }));
-    expect(screen.getByText('Dieser Eintrag läuft. Nur der Beginn kann geändert werden.')).toBeInTheDocument();
+    expect(screen.getByText('Dieser Eintrag läuft. Nur Beginn, Projekt und Notiz können geändert werden.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Ende')).not.toBeInTheDocument();
     expect(repo.getEntries(UID).map((e) => e.id)).toEqual(['old']);
   });

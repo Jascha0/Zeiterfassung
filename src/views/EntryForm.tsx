@@ -2,14 +2,30 @@ import { useId, useState } from 'react';
 import { useServices } from '../app/ServicesContext';
 import { useToast } from '../app/ToastContext';
 import { mapWriteError } from '../data/writeErrors';
-import { endInputKindFor, entryChanges, initialFormValues, parseEntryTimes, type EntryFormValues } from '../domain/entryForm';
+import {
+  changesTouchTime,
+  endInputKindFor,
+  entryChanges,
+  initialFormValues,
+  parseEntryTimes,
+  type EntryFormValues,
+} from '../domain/entryForm';
 import { formatClock, formatShortDate } from '../domain/format';
+import { normalizeNote } from '../domain/notes';
+import { isSelectableProject, projectPickerOptions } from '../domain/projects';
 import { deriveTimerStatus } from '../domain/timer';
 import { dayRange } from '../domain/totals';
-import type { Entry, EntryType } from '../domain/types';
+import type { Entry, EntryType, Project } from '../domain/types';
 import { editValidationRange, validateEntry, type EntryCandidate } from '../domain/validation';
 import { useEntriesInRange } from '../hooks/useEntriesInRange';
 import { formFieldErrorMessage, validationReasonMessage } from './entryMessages';
+import {
+  BREAK_REMOVES_LABELS_NOTICE,
+  NO_PROJECT_LABEL,
+  NOTE_TOO_LONG_MESSAGE,
+  PROJECT_UNAVAILABLE_MESSAGE,
+  projectOptionLabel,
+} from './projectMessages';
 
 export type EntryFormMode =
   | { kind: 'add'; dayStart: number }
@@ -21,8 +37,11 @@ export interface EntryFormProps {
   mode: EntryFormMode;
   baseEntries: readonly Entry[];
   openEntries: readonly Entry[];
+  projects?: readonly Project[];
   onDone: () => void;
 }
+
+const NO_PROJECTS: readonly Project[] = [];
 
 const TYPE_OPTIONS: ReadonlyArray<{ value: EntryType; label: string }> = [
   { value: 'work', label: 'Arbeit' },
@@ -36,7 +55,7 @@ const FORM_LABELS: Record<EntryFormMode['kind'], string> = {
 };
 
 export function EntryForm(props: EntryFormProps): React.JSX.Element {
-  const { uid, mode, baseEntries, openEntries, onDone } = props;
+  const { uid, mode, baseEntries, openEntries, projects = NO_PROJECTS, onDone } = props;
   const { entries } = useServices();
   const { showToast } = useToast();
   const id = useId();
@@ -57,6 +76,15 @@ export function EntryForm(props: EntryFormProps): React.JSX.Element {
   const [startTouched, setStartTouched] = useState(false);
   const [endTouched, setEndTouched] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
+  const [projectValue, setProjectValue] = useState(() => entry?.projectId ?? '');
+  const [noteValue, setNoteValue] = useState(() => entry?.note ?? '');
+
+  const labelsShown = mode.kind !== 'resolve' && values.type === 'work';
+  const showBreakNotice =
+    mode.kind === 'edit' &&
+    mode.entry.type === 'work' &&
+    values.type === 'break' &&
+    (mode.entry.projectId !== undefined || mode.entry.note !== undefined);
 
   const extended = useEntriesInRange(uid, endInput === 'date' ? editValidationRange(dayStart) : null);
 
@@ -82,39 +110,60 @@ export function EntryForm(props: EntryFormProps): React.JSX.Element {
       return;
     }
 
+    let projectId: string | undefined;
+    let note: string | undefined;
+    if (labelsShown) {
+      const normalized = normalizeNote(noteValue);
+      if (!normalized.ok) {
+        setMessages([NOTE_TOO_LONG_MESSAGE]);
+        return;
+      }
+      note = normalized.note;
+      projectId = projectValue === '' ? undefined : projectValue;
+      if (!isSelectableProject(projectId, projects, entry?.projectId)) {
+        setMessages([PROJECT_UNAVAILABLE_MESSAGE]);
+        return;
+      }
+    }
+
     const candidate: EntryCandidate = {
       id: entry?.id ?? null,
       type: showType || entry === null ? values.type : entry.type,
       start: parsed.start,
       end: parsed.end,
     };
-    const result = validateEntry({
-      candidate,
-      original: entry,
-      entries: endInput === 'date' ? extended.entries : baseEntries,
-      openEntries,
-      now,
-      activeOpenEntryId: activeId,
-    });
-    if (!result.ok) {
+    const validate = (): boolean => {
+      const result = validateEntry({
+        candidate,
+        original: entry,
+        entries: endInput === 'date' ? extended.entries : baseEntries,
+        openEntries,
+        now,
+        activeOpenEntryId: activeId,
+      });
+      if (result.ok) return true;
       const candidateIsOpenEntry = entry !== null && entry.end === null;
       setMessages(result.reasons.map((reason) => validationReasonMessage(reason, { candidateIsOpenEntry })));
-      return;
-    }
+      return false;
+    };
 
     if (entry === null) {
+      if (!validate()) return;
       entries
         .createEntry(uid, {
           type: candidate.type,
           start: candidate.start,
           end: candidate.end as number,
+          ...(projectId !== undefined ? { projectId } : {}),
+          ...(note !== undefined ? { note } : {}),
           createdAt: now,
           updatedAt: now,
         })
         .catch((error: unknown) => showToast(mapWriteError(error)));
     } else {
-      const changes = entryChanges(entry, candidate, now);
+      const changes = entryChanges(entry, candidate, now, labelsShown ? { projectId, note } : undefined);
       if (changes !== null) {
+        if (changesTouchTime(changes) && !validate()) return;
         entries.updateEntry(uid, entry.id, changes).catch((error: unknown) => showToast(mapWriteError(error)));
       }
     }
@@ -124,7 +173,7 @@ export function EntryForm(props: EntryFormProps): React.JSX.Element {
 
   let info: string | null = null;
   if (mode.kind === 'resolve') info = `Beginn: ${formatShortDate(mode.entry.start)} ${formatClock(mode.entry.start)}`;
-  else if (isActiveOpen) info = 'Dieser Eintrag läuft. Nur der Beginn kann geändert werden.';
+  else if (isActiveOpen) info = 'Dieser Eintrag läuft. Nur Beginn, Projekt und Notiz können geändert werden.';
   else if (entry !== null && entry.end === null) {
     info = 'Offen – nicht aktiv. Gib ein Ende an, um den Eintrag abzuschließen.';
   }
@@ -209,14 +258,44 @@ export function EntryForm(props: EntryFormProps): React.JSX.Element {
           endet am Folgetag
         </label>
       )}
+      {labelsShown && (
+        <div className="field">
+          <label htmlFor={`${id}-project`}>Projekt</label>
+          <select
+            id={`${id}-project`}
+            value={projectValue}
+            aria-describedby={describedBy}
+            onChange={(event) => setProjectValue(event.target.value)}
+          >
+            <option value="">{NO_PROJECT_LABEL}</option>
+            {projectPickerOptions(projects, entry?.projectId).map((option) => (
+              <option key={option.id} value={option.id}>
+                {projectOptionLabel(option)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {labelsShown && (
+        <div className="field">
+          <label htmlFor={`${id}-note`}>Notiz</label>
+          <textarea
+            id={`${id}-note`}
+            value={noteValue}
+            aria-describedby={describedBy}
+            onChange={(event) => setNoteValue(event.target.value)}
+          />
+        </div>
+      )}
       {extended.error !== null && <p role="alert">{extended.error}</p>}
       {messages.length > 0 && (
         <div role="alert" id={errorsId} className="form-errors">
-          {messages.map((message) => (
-            <p key={message}>{message}</p>
+          {messages.map((message, index) => (
+            <p key={index}>{message}</p>
           ))}
         </div>
       )}
+      {showBreakNotice && <p className="form-notice">{BREAK_REMOVES_LABELS_NOTICE}</p>}
       <div className="button-row">
         <button
           type="submit"
