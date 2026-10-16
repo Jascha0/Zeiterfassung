@@ -1,3 +1,5 @@
+import type { ProjectColor } from './palette';
+
 export type EntryType = 'work' | 'break';
 
 export interface Entry {
@@ -38,5 +40,30 @@ export interface EntryChanges {
   type?: EntryType;
   start?: number;
   end?: number;
+  updatedAt: number;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  color: ProjectColor;
+  archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface NewProject {
+  name: string;
+  color: ProjectColor;
+  archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Partial project update. Only defined fields are written; updatedAt always. */
+export interface ProjectChanges {
+  name?: string;
+  color?: ProjectColor;
+  archived?: boolean;
   updatedAt: number;
 }
