@@ -1,11 +1,13 @@
 import { createContext, useContext } from 'react';
 import type { AuthService } from '../auth/authTypes';
-import type { EntryRepository, SettingsRepository } from '../data/repository';
+import type { EntryRepository, ProjectRepository, SettingsRepository } from '../data/repository';
 
 export interface Services {
   auth: AuthService;
   entries: EntryRepository;
   settings: SettingsRepository;
+  /** Always set in production (src/firebase/app.ts). Optional only so slice-1/2 test fixtures compile unchanged. */
+  projects?: ProjectRepository;
 }
 
 const ServicesContext = createContext<Services | null>(null);

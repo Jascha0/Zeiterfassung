@@ -14,5 +14,5 @@ export function createFirebaseServices(config: FirebaseWebConfig): Services {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   });
   const repo = new FirestoreRepository(db);
-  return { auth: new FirebaseAuthService(auth), entries: repo, settings: repo };
+  return { auth: new FirebaseAuthService(auth), entries: repo, settings: repo, projects: repo };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseEntry, parsePreferences, type TimestampLike } from './entryMapping';
+import { parseEntry, parsePreferences, parseProject, type TimestampLike } from './entryMapping';
 
 function ts(ms: number): TimestampLike {
   return { toMillis: () => ms };
@@ -105,5 +105,40 @@ describe('parsePreferences', () => {
 
   it('returns null when theme is missing', () => {
     expect(parsePreferences({})).toBeNull();
+  });
+});
+
+describe('parseProject', () => {
+  const VALID_PROJECT = { name: 'A', color: 'blue', archived: false, createdAt: ts(1), updatedAt: ts(2) };
+
+  it('parseProject maps an unknown color key to gray', () => {
+    expect(
+      parseProject('p1', { name: 'A', color: 'pink', archived: false, createdAt: ts(1), updatedAt: ts(2) }),
+    ).toEqual({ id: 'p1', name: 'A', color: 'gray', archived: false, createdAt: 1, updatedAt: 2 });
+  });
+
+  it('parses a valid project (happy path)', () => {
+    expect(parseProject('p1', VALID_PROJECT)).toEqual({
+      id: 'p1',
+      name: 'A',
+      color: 'blue',
+      archived: false,
+      createdAt: 1,
+      updatedAt: 2,
+    });
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['missing name', { color: 'blue', archived: false, createdAt: ts(1), updatedAt: ts(2) }],
+    ['numeric color', { ...VALID_PROJECT, color: 3 }],
+    ['archived "yes"', { ...VALID_PROJECT, archived: 'yes' }],
+    ['non-timestamp createdAt', { ...VALID_PROJECT, createdAt: 'x' }],
+    ['non-finite updatedAt', { ...VALID_PROJECT, updatedAt: ts(Number.NaN) }],
+  ])('returns null for %s', (_label, data) => {
+    expect(parseProject('p1', data)).toBeNull();
+  });
+
+  it('returns null for undefined data', () => {
+    expect(parseProject('p1', undefined)).toBeNull();
   });
 });
