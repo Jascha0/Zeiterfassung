@@ -22,7 +22,7 @@ export function validateProjectName(name: string, projects: readonly Project[], 
   return { ok: true, name: trimmed };
 }
 
-function compareByName(a: { id: string; name: string }, b: { id: string; name: string }): number {
+export function compareByName(a: { id: string; name: string }, b: { id: string; name: string }): number {
   const byName = a.name.localeCompare(b.name, 'de');
   if (byName !== 0) return byName;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;

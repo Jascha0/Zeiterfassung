@@ -1,5 +1,6 @@
+import { compareByName } from './projects';
 import { dayRange, entryDurationMs } from './totals';
-import type { Entry, Project } from './types';
+import type { Entry, Project, TimeRange } from './types';
 
 export type ProjectTotal =
   | { kind: 'project'; project: Project; workMs: number }
@@ -10,11 +11,7 @@ const KIND_RANK: Readonly<Record<ProjectTotal['kind'], number>> = { project: 0, 
 
 function compareTotals(a: ProjectTotal, b: ProjectTotal): number {
   if (a.workMs !== b.workMs) return b.workMs - a.workMs;
-  if (a.kind === 'project' && b.kind === 'project') {
-    const byName = a.project.name.localeCompare(b.project.name, 'de');
-    if (byName !== 0) return byName;
-    return a.project.id < b.project.id ? -1 : a.project.id > b.project.id ? 1 : 0;
-  }
+  if (a.kind === 'project' && b.kind === 'project') return compareByName(a.project, b.project);
   return KIND_RANK[a.kind] - KIND_RANK[b.kind];
 }
 
@@ -29,7 +26,17 @@ export function projectDayTotals(
   projectsById: ReadonlyMap<string, Project>,
   now: number,
 ): ProjectTotal[] {
-  const range = dayRange(day);
+  return projectRangeTotals(entries, dayRange(day), projectsById, now);
+}
+
+/** Same as projectDayTotals but for any [range.start, range.end) on entry.start.
+ *  Invariant: sum(workMs) === sum of entryDurationMs(work entries starting in range, now). */
+export function projectRangeTotals(
+  entries: readonly Entry[],
+  range: TimeRange,
+  projectsById: ReadonlyMap<string, Project>,
+  now: number,
+): ProjectTotal[] {
   const byProject = new Map<string, { kind: 'project'; project: Project; workMs: number }>();
   let none: { kind: 'none'; workMs: number } | null = null;
   let unknown: { kind: 'unknown'; workMs: number } | null = null;

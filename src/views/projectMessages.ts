@@ -1,11 +1,10 @@
+import { ARCHIVED_SUFFIX, UNKNOWN_PROJECT_LABEL } from '../domain/projectLabels';
+export { ARCHIVED_SUFFIX, NONE_GROUP_LABEL, UNKNOWN_PROJECT_LABEL } from '../domain/projectLabels';
 import { PROJECT_COLOR_LABELS } from '../domain/palette';
 import type { ProjectOption } from '../domain/projects';
 import type { Project } from '../domain/types';
 
 export const NO_PROJECT_LABEL = 'Kein Projekt';
-export const NONE_GROUP_LABEL = 'Ohne Projekt';
-export const UNKNOWN_PROJECT_LABEL = 'Unbekanntes Projekt';
-export const ARCHIVED_SUFFIX = ' (archiviert)';
 export const NOTE_TOO_LONG_MESSAGE = 'Die Notiz darf höchstens 500 Zeichen lang sein.';
 export const PROJECT_UNAVAILABLE_MESSAGE = 'Das gewählte Projekt ist nicht mehr verfügbar.';
 export const BREAK_REMOVES_LABELS_NOTICE = 'Beim Speichern als Pause werden Projekt und Notiz entfernt.';
