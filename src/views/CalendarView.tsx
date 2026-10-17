@@ -1,8 +1,26 @@
+import { useMemo, useState } from 'react';
+import { useToast } from '../app/ToastContext';
 import { monthGrid, monthRange, monthStartOf, monthWorkTotals, shiftMonth } from '../domain/calendar';
+import { monthReportCsv } from '../domain/csv';
 import { formatHoursMinutes, formatLongDate, formatMonthYear } from '../domain/format';
+import { monthReportPdfContent } from '../domain/pdfContent';
+import { projectsById } from '../domain/projects';
+import { buildMonthReport, exportFileName } from '../domain/report';
 import { dayRange } from '../domain/totals';
-import { useEntriesInRange } from '../hooks/useEntriesInRange';
+import { downloadBlob, downloadText } from '../export/download';
+import { renderPdf } from '../export/pdfRenderer';
+import { LOAD_ERROR_MESSAGE, useEntriesInRange } from '../hooks/useEntriesInRange';
 import { useNow } from '../hooks/useNow';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { useProjects } from '../hooks/useProjects';
+import {
+  CSV_EXPORT_LABEL,
+  EXPORT_FAILED_MESSAGE,
+  EXPORT_HEADING,
+  EXPORT_STATUS_LABEL,
+  PDF_EXPORT_LABEL,
+  exportStatusLines,
+} from './exportMessages';
 
 const WEEKDAYS: ReadonlyArray<{ short: string; long: string }> = [
   { short: 'Mo', long: 'Montag' },
@@ -19,6 +37,7 @@ export function CalendarView(props: {
   monthStart: number;
   onMonthChange: (monthStart: number) => void;
   onOpenDay: (dayStart: number) => void;
+  email?: string | null;
 }): React.JSX.Element {
   const { uid, monthStart, onMonthChange, onOpenDay } = props;
   const now = useNow(30_000);
@@ -26,6 +45,43 @@ export function CalendarView(props: {
   const totals = monthWorkTotals(data.entries, monthStart, now);
   const todayStart = dayRange(now).start;
   const grid = monthGrid(monthStart);
+  const email = props.email ?? null;
+  const projectData = useProjects(uid);
+  const online = useOnlineStatus();
+  const { showToast } = useToast();
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const byId = useMemo(() => projectsById(projectData.projects), [projectData.projects]);
+  const report = useMemo(() => buildMonthReport(data.entries, byId, monthStart), [data.entries, byId, monthStart]);
+  const entriesLoaded = !data.loading && data.error === null;
+  const canExport = entriesLoaded && !projectData.loading && projectData.error === null && report.entries.length > 0;
+  const statusLines = exportStatusLines({
+    online,
+    entriesLoaded,
+    closedCount: report.entries.length,
+    runningCount: report.excludedRunningCount,
+  });
+
+  function handleCsv(): void {
+    try {
+      const csv = monthReportCsv(report, byId);
+      downloadText(csv, 'text/csv;charset=utf-8', exportFileName(report.monthStart, 'csv'));
+    } catch {
+      showToast(EXPORT_FAILED_MESSAGE);
+    }
+  }
+
+  async function handlePdf(): Promise<void> {
+    const fileName = exportFileName(report.monthStart, 'pdf');
+    setPdfBusy(true);
+    try {
+      const blob = await renderPdf(monthReportPdfContent(report, { email, createdAt: Date.now() }));
+      downloadBlob(blob, fileName);
+    } catch {
+      showToast(EXPORT_FAILED_MESSAGE);
+    } finally {
+      setPdfBusy(false);
+    }
+  }
 
   return (
     <main className="page">
@@ -104,6 +160,23 @@ export function CalendarView(props: {
             </dl>
           </>
         )}
+        <div className="export-area">
+          <h3>{EXPORT_HEADING}</h3>
+          {data.error === null && projectData.error !== null && <p role="alert">{LOAD_ERROR_MESSAGE}</p>}
+          <div className="button-row">
+            <button type="button" disabled={!canExport} onClick={handleCsv}>
+              {CSV_EXPORT_LABEL}
+            </button>
+            <button type="button" disabled={!canExport || pdfBusy} onClick={() => void handlePdf()}>
+              {PDF_EXPORT_LABEL}
+            </button>
+          </div>
+          <div role="status" aria-label={EXPORT_STATUS_LABEL} className="export-status">
+            {statusLines.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        </div>
       </section>
     </main>
   );

@@ -36,6 +36,7 @@ function renderView(view: View, user: AuthUser, setView: (view: View) => void): 
           monthStart={view.monthStart}
           onMonthChange={(monthStart) => setView({ name: 'calendar', monthStart })}
           onOpenDay={(dayStart) => setView({ name: 'day', dayStart })}
+          email={user.email}
         />
       );
     case 'day':
