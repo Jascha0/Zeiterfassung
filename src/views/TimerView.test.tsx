@@ -1020,3 +1020,61 @@ describe('TimerView: projects (slice 3) — switch, note, carry-over', () => {
     expect(open !== undefined && 'projectId' in open).toBe(false);
   });
 });
+
+// Tester finding (gap, deferred minor from the slice-3 review): the entries subscription and the
+// projects subscription each render their own load-error alert, so a simultaneous failure of both
+// produces two identical alerts instead of one. Not a crash and no spec edge case requires a single
+// alert, but it is worth a regression test so a future change does not silently duplicate further.
+describe('TimerView: duplicate load-error alert on a double subscription failure (tester finding)', () => {
+  function project(id: string, name: string, color: Project['color'] = 'blue', archived = false): Project {
+    return { id, name, color, archived, createdAt: 0, updatedAt: 0 };
+  }
+
+  it('renders two identical "Daten konnten nicht geladen werden." alerts when entries and projects both fail', async () => {
+    class DoubleFailingRepo extends InMemoryRepository {
+      override subscribeEntriesInRange(
+        _uid: string,
+        _range: TimeRange,
+        _onChange: (entries: Entry[]) => void,
+        onError: (error: Error) => void,
+      ): Unsubscribe {
+        queueMicrotask(() => onError(new Error('boom')));
+        return () => {};
+      }
+      override subscribeOpenEntries(
+        _uid: string,
+        _onChange: (entries: Entry[]) => void,
+        onError: (error: Error) => void,
+      ): Unsubscribe {
+        queueMicrotask(() => onError(new Error('boom')));
+        return () => {};
+      }
+      override subscribeProjects(
+        _uid: string,
+        _onChange: (projects: Project[]) => void,
+        onError: (error: Error) => void,
+      ): Unsubscribe {
+        queueMicrotask(() => onError(new Error('boom')));
+        return () => {};
+      }
+    }
+    const repo = new DoubleFailingRepo();
+    repo.seedProjects(UID, [project('pA', 'Kunde A')]);
+    const services: Services = { auth: new FakeAuthService(), entries: repo, settings: repo, projects: repo };
+    render(
+      <ServicesProvider services={services}>
+        <ToastProvider>
+          <TimerView uid={UID} />
+        </ToastProvider>
+      </ServicesProvider>,
+    );
+
+    const alerts = await waitFor(() => {
+      const found = screen.getAllByRole('alert');
+      expect(found.length).toBeGreaterThanOrEqual(2);
+      return found;
+    });
+    expect(alerts).toHaveLength(2);
+    for (const alert of alerts) expect(alert).toHaveTextContent('Daten konnten nicht geladen werden.');
+  });
+});
