@@ -1,8 +1,18 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const optionalDependencyStub = fileURLToPath(new URL('./src/export/optionalDependencyStub.ts', import.meta.url));
+
 export default defineConfig({
+  resolve: {
+    alias: [
+      { find: /^html2canvas$/, replacement: optionalDependencyStub },
+      { find: /^dompurify$/, replacement: optionalDependencyStub },
+      { find: /^canvg$/, replacement: optionalDependencyStub },
+    ],
+  },
   plugins: [
     react(),
     VitePWA({
