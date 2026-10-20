@@ -1,3 +1,5 @@
+import type { ProjectColor } from './palette';
+
 export type EntryType = 'work' | 'break';
 
 export interface Entry {
@@ -15,6 +17,7 @@ export interface NewEntry {
   type: EntryType;
   start: number;
   end: null;
+  projectId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -22,4 +25,59 @@ export interface NewEntry {
 export interface TimeRange {
   start: number;
   end: number;
+}
+
+/** A manually created entry. Always closed (0023). The timer keeps using NewEntry (end: null). */
+export interface NewClosedEntry {
+  type: EntryType;
+  start: number;
+  end: number;
+  projectId?: string;
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Change of an optional entry field (0028): set to a value, or remove the field. */
+export type FieldChange<T> = { kind: 'set'; value: T } | { kind: 'remove' };
+
+/** Desired project/note of a work entry. undefined = none (field absent). */
+export interface EntryLabels {
+  projectId: string | undefined;
+  note: string | undefined;
+}
+
+/** Partial update of one entry. Only defined fields are written; updatedAt always. */
+export interface EntryChanges {
+  type?: EntryType;
+  start?: number;
+  end?: number;
+  projectId?: FieldChange<string>;
+  note?: FieldChange<string>;
+  updatedAt: number;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  color: ProjectColor;
+  archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface NewProject {
+  name: string;
+  color: ProjectColor;
+  archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Partial project update. Only defined fields are written; updatedAt always. */
+export interface ProjectChanges {
+  name?: string;
+  color?: ProjectColor;
+  archived?: boolean;
+  updatedAt: number;
 }

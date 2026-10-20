@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatClock, formatDuration } from './format';
+import {
+  formatClock,
+  formatDuration,
+  formatHoursMinutes,
+  formatLongDate,
+  formatMonthYear,
+  formatShortDate,
+} from './format';
 
 describe('formatDuration', () => {
   it('formats 0 as 0:00:00', () => {
@@ -45,5 +52,41 @@ describe('formatClock', () => {
   it('formats afternoon/evening hours in 24h notation', () => {
     const instant = new Date(2026, 5, 15, 23, 59).getTime();
     expect(formatClock(instant)).toBe('23:59');
+  });
+});
+
+describe('formatHoursMinutes', () => {
+  it('formats 0 as 0:00', () => {
+    expect(formatHoursMinutes(0)).toBe('0:00');
+  });
+
+  it('formats 4 hours', () => {
+    expect(formatHoursMinutes(4 * 3_600_000)).toBe('4:00');
+  });
+
+  it('floors minutes and is unbounded in hours', () => {
+    expect(formatHoursMinutes(152 * 3_600_000 + 30 * 60_000 + 59_999)).toBe('152:30');
+  });
+
+  it('returns 0:00 for negative values', () => {
+    expect(formatHoursMinutes(-1)).toBe('0:00');
+  });
+
+  it('returns 0:00 for NaN', () => {
+    expect(formatHoursMinutes(NaN)).toBe('0:00');
+  });
+});
+
+describe('date formats', () => {
+  it('formats month and year in German', () => {
+    expect(formatMonthYear(new Date(2026, 2, 1).getTime())).toBe('März 2026');
+  });
+
+  it('formats a long date in German', () => {
+    expect(formatLongDate(new Date(2026, 9, 16).getTime())).toBe('Freitag, 16. Oktober 2026');
+  });
+
+  it('formats a short date', () => {
+    expect(formatShortDate(new Date(2026, 9, 16, 23, 59).getTime())).toBe('16.10.2026');
   });
 });

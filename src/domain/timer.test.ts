@@ -6,6 +6,7 @@ import {
   planTransition,
 } from './timer';
 import type { Entry } from './types';
+import { carryOverProjectId } from './timer';
 
 function entry(overrides: Partial<Entry> & { id: string }): Entry {
   return {
@@ -184,5 +185,124 @@ describe('planTransition', () => {
     const plan = planTransition([closedWork], 'start', 3000);
     expect(plan.create).toEqual({ type: 'work', start: 3000, end: null, createdAt: 3000, updatedAt: 3000 });
     expect(plan.close).toEqual([]);
+  });
+});
+
+describe('planTransition with projects (slice 3)', () => {
+  it('switch closes the working entry and opens work with the target project at the same instant', () => {
+    const w1 = entry({ id: 'w1', type: 'work', start: 1000, end: null, projectId: 'pA' });
+    expect(planTransition([w1], 'switch', 5000, 'pC')).toEqual({
+      close: [{ id: 'w1', end: 5000, updatedAt: 5000 }],
+      create: { type: 'work', start: 5000, end: null, projectId: 'pC', createdAt: 5000, updatedAt: 5000 },
+    });
+  });
+
+  it('start with a project creates work with that projectId', () => {
+    expect(planTransition([], 'start', 1000, 'pA').create).toEqual({
+      type: 'work', start: 1000, end: null, projectId: 'pA', createdAt: 1000, updatedAt: 1000,
+    });
+  });
+
+  it('start without a project creates no projectId key (byte-identical to slice 1)', () => {
+    const plan = planTransition([], 'start', 1000);
+    expect(Object.keys(plan.create!)).toEqual(['type', 'start', 'end', 'createdAt', 'updatedAt']);
+  });
+
+  it('resume with a project creates work with that projectId and no note key', () => {
+    const b1 = entry({ id: 'b1', type: 'break', start: 1000, end: null });
+    const plan = planTransition([b1], 'resume', 2000, 'pA');
+    expect(plan.create).toEqual({ type: 'work', start: 2000, end: null, projectId: 'pA', createdAt: 2000, updatedAt: 2000 });
+    expect('note' in plan.create!).toBe(false);
+  });
+
+  it('pause ignores the projectId: break create has no projectId key', () => {
+    const w1 = entry({ id: 'w1', type: 'work', start: 1000, end: null, projectId: 'pA' });
+    const plan = planTransition([w1], 'pause', 2000, 'pA');
+    expect(plan.create).toEqual({ type: 'break', start: 2000, end: null, createdAt: 2000, updatedAt: 2000 });
+    expect('projectId' in plan.create!).toBe(false);
+  });
+
+  it('end ignores the projectId', () => {
+    const w1 = entry({ id: 'w1', type: 'work', start: 1000, end: null, projectId: 'pA' });
+    expect(planTransition([w1], 'end', 2000, 'pB')).toEqual({ close: [{ id: 'w1', end: 2000, updatedAt: 2000 }], create: null });
+  });
+
+  it('switch to Kein Projekt (undefined) from pA creates work without a projectId key', () => {
+    const w1 = entry({ id: 'w1', type: 'work', start: 1000, end: null, projectId: 'pA' });
+    const plan = planTransition([w1], 'switch', 5000);
+    expect(plan.close).toEqual([{ id: 'w1', end: 5000, updatedAt: 5000 }]);
+    expect(plan.create).toEqual({ type: 'work', start: 5000, end: null, createdAt: 5000, updatedAt: 5000 });
+    expect('projectId' in plan.create!).toBe(false);
+  });
+
+  it('switch from no project to a project is allowed', () => {
+    const w1 = entry({ id: 'w1', type: 'work', start: 1000, end: null });
+    expect(planTransition([w1], 'switch', 5000, 'pB').create?.projectId).toBe('pB');
+  });
+
+  it('switch to the same project throws InvalidTimerActionError', () => {
+    const withProject = entry({ id: 'w1', type: 'work', start: 1000, end: null, projectId: 'pA' });
+    const withoutProject = entry({ id: 'w2', type: 'work', start: 1000, end: null });
+    expect(() => planTransition([withProject], 'switch', 5000, 'pA')).toThrow(InvalidTimerActionError);
+    expect(() => planTransition([withoutProject], 'switch', 5000)).toThrow(InvalidTimerActionError);
+    try {
+      planTransition([withProject], 'switch', 5000, 'pA');
+    } catch (error) {
+      expect(error).toMatchObject({ action: 'switch', state: 'working' });
+    }
+  });
+
+  it('switch while idle or on break throws InvalidTimerActionError', () => {
+    const closed = entry({ id: 'w1', type: 'work', start: 1000, end: 2000 });
+    const b1 = entry({ id: 'b1', type: 'break', start: 1000, end: null });
+    expect(() => planTransition([], 'switch', 5000, 'pA')).toThrow(InvalidTimerActionError);
+    expect(() => planTransition([closed], 'switch', 5000, 'pA')).toThrow(InvalidTimerActionError);
+    expect(() => planTransition([b1], 'switch', 5000, 'pA')).toThrow(InvalidTimerActionError);
+    try {
+      planTransition([b1], 'switch', 5000, 'pA');
+    } catch (error) {
+      expect(error).toMatchObject({ action: 'switch', state: 'onBreak' });
+    }
+  });
+
+  it('switch under clock skew (now < start) closes and starts at start', () => {
+    const w1 = entry({ id: 'w1', type: 'work', start: 9000, end: null, projectId: 'pA' });
+    expect(planTransition([w1], 'switch', 5000, 'pC')).toEqual({
+      close: [{ id: 'w1', end: 9000, updatedAt: 5000 }],
+      create: { type: 'work', start: 9000, end: null, projectId: 'pC', createdAt: 5000, updatedAt: 5000 },
+    });
+  });
+
+  it('switch keeps net work unchanged: closed + new block equals the unsplit duration', () => {
+    const w1 = entry({ id: 'w1', type: 'work', start: 1000, end: null, projectId: 'pA' });
+    const plan = planTransition([w1], 'switch', 5000, 'pC');
+    const later = 12_000;
+    const closedMs = plan.close[0].end - w1.start;
+    const newMs = later - plan.create!.start;
+    expect(closedMs + newMs).toBe(later - w1.start);
+  });
+
+  it('allowedActions never offers switch', () => {
+    expect(allowedActions('idle')).not.toContain('switch');
+    expect(allowedActions('working')).not.toContain('switch');
+    expect(allowedActions('onBreak')).not.toContain('switch');
+  });
+});
+
+describe('carryOverProjectId (slice 3)', () => {
+  it('returns the projectId of a work entry', () => {
+    expect(carryOverProjectId(entry({ id: 'w1', type: 'work', end: 100, projectId: 'pA', note: 'x' }))).toBe('pA');
+  });
+
+  it('returns undefined for a work entry without a project', () => {
+    expect(carryOverProjectId(entry({ id: 'w1', type: 'work', end: 100 }))).toBeUndefined();
+  });
+
+  it('returns undefined for a break, even if it carries a projectId', () => {
+    expect(carryOverProjectId(entry({ id: 'b1', type: 'break', end: 100, projectId: 'pA' }))).toBeUndefined();
+  });
+
+  it('returns undefined for null', () => {
+    expect(carryOverProjectId(null)).toBeUndefined();
   });
 });

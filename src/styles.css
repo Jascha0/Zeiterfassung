@@ -16,6 +16,14 @@
   --color-focus: #0b5cd5;
   --color-toast-bg: #1f2328;
   --color-toast-text: #ffffff;
+  --project-blue: #0969da;
+  --project-green: #1a7f37;
+  --project-orange: #bc4c00;
+  --project-red: #cf222e;
+  --project-purple: #8250df;
+  --project-teal: #0e7c86;
+  --project-yellow: #9a6700;
+  --project-gray: #6e7781;
   color-scheme: light;
 }
 
@@ -36,6 +44,14 @@
   --color-focus: #79b8ff;
   --color-toast-bg: #e6edf3;
   --color-toast-text: #0d1117;
+  --project-blue: #4493f8;
+  --project-green: #3fb950;
+  --project-orange: #f0883e;
+  --project-red: #f85149;
+  --project-purple: #a371f7;
+  --project-teal: #39c5cf;
+  --project-yellow: #d29922;
+  --project-gray: #8b949e;
   color-scheme: dark;
 }
 
@@ -353,4 +369,212 @@ input[type='password'] {
 
 .toast .button-link {
   color: inherit;
+}
+
+.calendar {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0.25rem;
+  table-layout: fixed;
+}
+
+.calendar th {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.calendar-cell {
+  padding: 0;
+  vertical-align: top;
+}
+
+.calendar-day {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 3.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-day.is-future {
+  color: var(--color-text-muted);
+}
+
+.calendar-day.is-today {
+  border: 3px solid var(--color-primary);
+  font-weight: 700;
+}
+
+.calendar-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.calendar-nav {
+  margin-bottom: 0.75rem;
+}
+
+.entry-form {
+  margin-top: 0.75rem;
+}
+
+input[type='time'],
+input[type='date'] {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.form-errors p {
+  margin: 0 0 0.25rem;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.day-entries li {
+  margin-bottom: 0.5rem;
+}
+
+.entry-actions {
+  display: inline-flex;
+  margin-left: 0.5rem;
+}
+
+.confirm {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+}
+
+.project-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-left: 0.5rem;
+}
+
+.project-dot {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  flex: none;
+}
+
+.project-color-blue {
+  background: var(--project-blue);
+}
+
+.project-color-green {
+  background: var(--project-green);
+}
+
+.project-color-orange {
+  background: var(--project-orange);
+}
+
+.project-color-red {
+  background: var(--project-red);
+}
+
+.project-color-purple {
+  background: var(--project-purple);
+}
+
+.project-color-teal {
+  background: var(--project-teal);
+}
+
+.project-color-yellow {
+  background: var(--project-yellow);
+}
+
+.project-color-gray {
+  background: var(--project-gray);
+}
+
+.entry-note {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.project-totals dd {
+  font-size: 1.25rem;
+}
+
+select,
+textarea {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+textarea {
+  width: 100%;
+  min-height: 4rem;
+}
+
+.form-notice {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+@media (max-width: 400px) {
+  .main-nav {
+    width: 100%;
+    margin-left: 0;
+    gap: 0.375rem;
+  }
+
+  .main-nav button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0.5rem 0.25rem;
+  }
+}
+
+.export-area {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.export-area h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.card .export-status {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.export-status p {
+  margin: 0.5rem 0 0;
 }

@@ -2,7 +2,7 @@ import type { Entry, NewEntry } from './types';
 import { findOpenEntries } from './warnings';
 
 export type TimerState = 'idle' | 'working' | 'onBreak';
-export type TimerAction = 'start' | 'pause' | 'resume' | 'end';
+export type TimerAction = 'start' | 'pause' | 'resume' | 'end' | 'switch';
 
 export interface TimerStatus {
   state: TimerState;
@@ -54,18 +54,33 @@ export function allowedActions(state: TimerState): TimerAction[] {
   }
 }
 
-function newEntry(type: NewEntry['type'], start: number, now: number): NewEntry {
-  return { type, start, end: null, createdAt: now, updatedAt: now };
+function newEntry(type: NewEntry['type'], start: number, now: number, projectId?: string): NewEntry {
+  if (projectId === undefined) {
+    return { type, start, end: null, createdAt: now, updatedAt: now };
+  }
+  return { type, start, end: null, projectId, createdAt: now, updatedAt: now };
 }
 
-export function planTransition(entries: readonly Entry[], action: TimerAction, now: number): TransitionPlan {
+function isValidAction(state: TimerState, action: TimerAction): boolean {
+  return action === 'switch' ? state === 'working' : allowedActions(state).includes(action);
+}
+
+export function planTransition(
+  entries: readonly Entry[],
+  action: TimerAction,
+  now: number,
+  projectId?: string,
+): TransitionPlan {
   const status = deriveTimerStatus(entries);
-  if (!allowedActions(status.state).includes(action)) {
+  if (!isValidAction(status.state, action)) {
     throw new InvalidTimerActionError(action, status.state);
   }
   const active = status.activeEntry;
   if (action === 'start' || active === null) {
-    return { close: [], create: newEntry('work', now, now) };
+    return { close: [], create: newEntry('work', now, now, projectId) };
+  }
+  if (action === 'switch' && projectId === active.projectId) {
+    throw new InvalidTimerActionError(action, status.state);
   }
   const closeAt = Math.max(now, active.start);
   const close: EntryClose[] = [{ id: active.id, end: closeAt, updatedAt: now }];
@@ -73,8 +88,13 @@ export function planTransition(entries: readonly Entry[], action: TimerAction, n
     case 'pause':
       return { close, create: newEntry('break', closeAt, now) };
     case 'resume':
-      return { close, create: newEntry('work', closeAt, now) };
+    case 'switch':
+      return { close, create: newEntry('work', closeAt, now, projectId) };
     case 'end':
       return { close, create: null };
   }
+}
+
+export function carryOverProjectId(previous: Entry | null): string | undefined {
+  return previous?.type === 'work' ? previous.projectId : undefined;
 }

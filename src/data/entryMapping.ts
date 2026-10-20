@@ -1,4 +1,5 @@
-import type { Entry } from '../domain/types';
+import { isProjectColor } from '../domain/palette';
+import type { Entry, Project } from '../domain/types';
 import { isThemePreference } from '../theme/theme';
 import type { Preferences } from './repository';
 
@@ -43,6 +44,24 @@ export function parseEntry(id: string, data: Record<string, unknown> | undefined
   if (typeof projectId === 'string') entry.projectId = projectId;
   if (typeof note === 'string') entry.note = note;
   return entry;
+}
+
+export function parseProject(id: string, data: Record<string, unknown> | undefined): Project | null {
+  if (data === undefined) return null;
+  const { name, color, archived, createdAt, updatedAt } = data;
+  if (typeof name !== 'string' || typeof color !== 'string' || typeof archived !== 'boolean') return null;
+  if (!isTimestampLike(createdAt) || !isTimestampLike(updatedAt)) return null;
+  const createdAtMs = toMillis(createdAt);
+  const updatedAtMs = toMillis(updatedAt);
+  if (createdAtMs === null || updatedAtMs === null) return null;
+  return {
+    id,
+    name,
+    color: isProjectColor(color) ? color : 'gray',
+    archived,
+    createdAt: createdAtMs,
+    updatedAt: updatedAtMs,
+  };
 }
 
 export function parsePreferences(data: Record<string, unknown> | undefined): Preferences | null {

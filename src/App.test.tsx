@@ -1,11 +1,12 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import type { Services } from './app/ServicesContext';
 import { AUTH_MESSAGES } from './auth/authErrors';
 import type { AuthUser } from './auth/authTypes';
 import { InMemoryRepository } from './data/inMemoryRepository';
+import type { Entry } from './domain/types';
 import { FakeAuthService } from './test/fakeAuthService';
 
 function user(overrides: Partial<AuthUser> = {}): AuthUser {
@@ -111,6 +112,161 @@ describe('App: redirect error while signed in (review fix — Shell-level notice
   });
 });
 
+describe('App: Kalender', () => {
+  function at(day: number, hours: number, minutes = 0): number {
+    return new Date(2026, 9, day, hours, minutes).getTime();
+  }
+
+  function openEntry(id: string, start: number): Entry {
+    return { id, type: 'work', start, end: null, createdAt: start, updatedAt: start };
+  }
+
+  function renderSignedIn(repo: InMemoryRepository) {
+    const auth = new FakeAuthService();
+    auth.setUser(user());
+    render(<App services={{ auth, entries: repo, settings: repo }} />);
+  }
+
+  function itemFor(text: string | RegExp): HTMLElement {
+    const item = screen.getByText(text).closest('li');
+    if (!item) throw new Error('list item missing');
+    return item;
+  }
+
+  async function typeInto(ui: ReturnType<typeof userEvent.setup>, label: string, value: string) {
+    const input = screen.getByLabelText(label);
+    await ui.clear(input);
+    await ui.type(input, value);
+  }
+
+  async function openDay(ui: ReturnType<typeof userEvent.setup>, name: RegExp) {
+    await ui.click(screen.getByRole('button', { name: 'Kalender' }));
+    await ui.click(await screen.findByRole('button', { name }));
+  }
+
+  // `delay: null` on every `userEvent.setup()` below disables user-event's own real
+  // (setTimeout-based) pacing between keystrokes/clicks. `Date` is faked here but
+  // `setTimeout` is not, so without this the long interaction chains in this block
+  // depend on real wall-clock time elapsing promptly — under CPU contention (parallel
+  // test files) that occasionally exceeded the default findBy/waitFor timeout and
+  // made one test flaky (observed 1/23 full-suite runs). This removes that dependency
+  // without changing any assertion.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date(2026, 9, 16, 15, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('shows Timer, Kalender, Projekte, Konto in order and opens the current month with today marked', async () => {
+    const ui = userEvent.setup({ delay: null });
+    renderSignedIn(new InMemoryRepository());
+    const nav = await screen.findByRole('navigation', { name: 'Hauptnavigation' });
+    expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['Timer', 'Kalender', 'Projekte', 'Konto']);
+
+    await ui.click(screen.getByRole('button', { name: 'Kalender' }));
+    expect(screen.getByRole('heading', { name: 'Oktober 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kalender' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Timer' })).not.toHaveAttribute('aria-current');
+    const today = await screen.findByRole('button', { name: /^Freitag, 16\. Oktober 2026/ });
+    expect(today).toHaveAttribute('aria-current', 'date');
+  });
+
+  it('adds an entry in the day detail, then edits it; the calendar follows', async () => {
+    const ui = userEvent.setup({ delay: null });
+    renderSignedIn(new InMemoryRepository());
+    await screen.findByText('Arbeitszeit');
+
+    await openDay(ui, /^Mittwoch, 14\. Oktober 2026/);
+    expect(screen.getByRole('heading', { name: 'Mittwoch, 14. Oktober 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kalender' })).toHaveAttribute('aria-current', 'page');
+    await screen.findByText('Keine Einträge an diesem Tag.');
+    await ui.click(screen.getByRole('button', { name: 'Eintrag hinzufügen' }));
+    await typeInto(ui, 'Beginn', '08:00');
+    await typeInto(ui, 'Ende', '12:00');
+    await ui.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(await screen.findByText('Arbeit 08:00 – 12:00 (4:00)')).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Zurück zum Kalender' }));
+    expect(screen.getByRole('heading', { name: 'Oktober 2026' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^Mittwoch, 14\. Oktober 2026/ })).toHaveAccessibleName(
+      /4:00 gearbeitet/,
+    );
+
+    await ui.click(screen.getByRole('button', { name: /^Mittwoch, 14\. Oktober 2026/ }));
+    await ui.click(within(await waitFor(() => itemFor('Arbeit 08:00 – 12:00 (4:00)'))).getByRole('button', { name: 'Bearbeiten' }));
+    await typeInto(ui, 'Ende', '13:00');
+    await ui.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(await screen.findByText('Arbeit 08:00 – 13:00 (5:00)')).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Zurück zum Kalender' }));
+    expect(await screen.findByRole('button', { name: /^Mittwoch, 14\. Oktober 2026/ })).toHaveAccessibleName(
+      /5:00 gearbeitet/,
+    );
+  });
+
+  it('resolves two open entries from the timer warning; the newer one keeps running', async () => {
+    const ui = userEvent.setup({ delay: null });
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [openEntry('old', at(12, 8)), openEntry('new', at(16, 14))]);
+    renderSignedIn(repo);
+
+    expect(await screen.findByText(/mehrere offene Einträge/)).toBeInTheDocument();
+    await ui.click(screen.getByRole('button', { name: 'Offene Einträge bereinigen' }));
+    expect(screen.getByRole('heading', { name: 'Offene Einträge bereinigen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Timer' })).toHaveAttribute('aria-current', 'page');
+
+    const item = (await screen.findByText('12.10.2026 · Arbeit ab 08:00')).closest('li');
+    if (!item) throw new Error('list item missing');
+    await ui.click(within(item).getByRole('button', { name: 'Beenden um …' }));
+    const form = await screen.findByRole('form', { name: 'Eintrag beenden' });
+    const submit = within(form).getByRole('button', { name: 'Beenden' });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await ui.click(submit);
+    expect(await screen.findByText('Es gibt keine älteren offenen Einträge mehr.')).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Zurück zum Timer' }));
+    expect(await screen.findByText('Arbeitet seit 14:00')).toBeInTheDocument();
+    expect(screen.queryByText(/mehrere offene Einträge/)).not.toBeInTheDocument();
+    expect(repo.getEntries('u1').filter((e) => e.end === null).map((e) => e.id)).toEqual(['new']);
+  });
+
+  it('editing the active entry start in the day detail updates the timer', async () => {
+    const ui = userEvent.setup({ delay: null });
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [openEntry('run', at(16, 14))]);
+    renderSignedIn(repo);
+    expect(await screen.findByText('Arbeitet seit 14:00')).toBeInTheDocument();
+
+    await openDay(ui, /^Freitag, 16\. Oktober 2026/);
+    await ui.click(within(await waitFor(() => itemFor(/^Arbeit 14:00 – läuft/))).getByRole('button', { name: 'Bearbeiten' }));
+    await typeInto(ui, 'Beginn', '13:00');
+    await ui.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(await screen.findByText(/^Arbeit 13:00 – läuft/)).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Timer' }));
+    expect(await screen.findByText('Arbeitet seit 13:00')).toBeInTheDocument();
+  });
+
+  it('deleting the active entry in the day detail makes the timer idle', async () => {
+    const ui = userEvent.setup({ delay: null });
+    const repo = new InMemoryRepository();
+    repo.seedEntries('u1', [openEntry('run', at(16, 14))]);
+    renderSignedIn(repo);
+    expect(await screen.findByText('Arbeitet seit 14:00')).toBeInTheDocument();
+
+    await openDay(ui, /^Freitag, 16\. Oktober 2026/);
+    await ui.click(within(await waitFor(() => itemFor(/^Arbeit 14:00 – läuft/))).getByRole('button', { name: 'Löschen' }));
+    await ui.click(screen.getByRole('button', { name: 'Ja, löschen' }));
+    expect(await screen.findByText('Keine Einträge an diesem Tag.')).toBeInTheDocument();
+
+    await ui.click(screen.getByRole('button', { name: 'Timer' }));
+    expect(await screen.findByText('Nicht gestartet')).toBeInTheDocument();
+  });
+});
+
 describe('App: verification banner', () => {
   it('shows the banner for an unverified password user', async () => {
     const auth = new FakeAuthService();
@@ -133,5 +289,211 @@ describe('App: verification banner', () => {
     render(<App services={makeServices(auth)} />);
     await screen.findByText('Arbeitszeit');
     expect(screen.queryByRole('region', { name: 'E-Mail-Bestätigung' })).not.toBeInTheDocument();
+  });
+});
+
+describe('App: Projekte (slice 3)', () => {
+  it('opens the project view from the nav and marks only "Projekte" as current (edge case 30)', async () => {
+    const ui = userEvent.setup();
+    const auth = new FakeAuthService();
+    const repo = new InMemoryRepository();
+    auth.setUser(user());
+    render(<App services={{ auth, entries: repo, settings: repo, projects: repo }} />);
+    await screen.findByText('Arbeitszeit');
+
+    await ui.click(screen.getByRole('button', { name: 'Projekte' }));
+
+    expect(screen.getByRole('heading', { name: 'Projekte' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Projekte' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Timer' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: 'Kalender' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: 'Konto' })).not.toHaveAttribute('aria-current');
+    expect(await screen.findByText('Noch keine Projekte.')).toBeInTheDocument();
+  });
+});
+
+// Tester-added (slice 3): cross-task flows no single task's own tests could see — a project
+// created in one view must reach the pickers of every other view, and a full timer session
+// with project switches must add up correctly once reflected in the day detail and the calendar.
+describe('App: Projekte cross-task flows (tester)', () => {
+  function renderSignedIn(repo: InMemoryRepository) {
+    const auth = new FakeAuthService();
+    auth.setUser(user());
+    render(<App services={{ auth, entries: repo, settings: repo, projects: repo }} />);
+  }
+
+  function projectTotalRows(): Array<[string | null | undefined, string | null | undefined]> {
+    const group = screen.getByRole('group', { name: 'Arbeitszeit nach Projekt' });
+    return Array.from(group.querySelectorAll('dl > div')).map((row) => [
+      row.querySelector('dt')?.textContent,
+      row.querySelector('dd')?.textContent,
+    ]);
+  }
+
+  function totalValue(term: string): HTMLElement {
+    const value = screen.getByText(term).parentElement?.querySelector('dd');
+    if (!value) throw new Error(`${term} value missing`);
+    return value;
+  }
+
+  async function createProject(ui: ReturnType<typeof userEvent.setup>, name: string) {
+    await ui.click(screen.getByRole('button', { name: 'Projekte' }));
+    const form = await screen.findByRole('form', { name: 'Neues Projekt' });
+    const input = within(form).getByLabelText('Name');
+    await ui.clear(input);
+    await ui.type(input, name);
+    await ui.click(within(form).getByRole('button', { name: 'Anlegen' }));
+    await screen.findByText(name);
+  }
+
+  function rowFor(name: string): HTMLElement {
+    const item = screen.getByText(name).closest('li');
+    if (!item) throw new Error('project row missing');
+    return item;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date(2026, 9, 16, 15, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a project created in ProjectsView reaches the Timer and day-detail pickers; archiving hides it from new picks while existing entries and totals keep showing it; restoring brings it back', async () => {
+    const ui = userEvent.setup({ delay: null });
+    const repo = new InMemoryRepository();
+    renderSignedIn(repo);
+    await screen.findByText('Arbeitszeit');
+
+    await createProject(ui, 'Kunde A');
+
+    // 1. Appears in the Timer idle picker.
+    await ui.click(screen.getByRole('button', { name: 'Timer' }));
+    const idleSelect = await screen.findByLabelText('Projekt');
+    expect(within(idleSelect).getByRole('option', { name: 'Kunde A · Blau' })).toBeInTheDocument();
+
+    // 2. Appears in the day-detail add-form picker; the entry stores it.
+    await ui.click(screen.getByRole('button', { name: 'Kalender' }));
+    await ui.click(await screen.findByRole('button', { name: /^Freitag, 16\. Oktober 2026/ }));
+    await ui.click(screen.getByRole('button', { name: 'Eintrag hinzufügen' }));
+    await ui.type(screen.getByLabelText('Beginn'), '08:00');
+    await ui.type(screen.getByLabelText('Ende'), '12:00');
+    await ui.selectOptions(screen.getByLabelText('Projekt'), screen.getByRole('option', { name: 'Kunde A · Blau' }));
+    await ui.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    const addedItem = (await screen.findByText(/^Arbeit 08:00 – 12:00/)).closest('li');
+    if (!addedItem) throw new Error('list item missing');
+    expect(within(addedItem).getByText('Kunde A')).toBeInTheDocument();
+
+    // 3. Archive it from ProjectsView.
+    await ui.click(screen.getByRole('button', { name: 'Projekte' }));
+    await ui.click(within(await waitFor(() => rowFor('Kunde A'))).getByRole('button', { name: 'Archivieren' }));
+    await screen.findByText('Kunde A (archiviert)');
+
+    // 4. Gone from the idle Timer picker (no current project to keep it selectable).
+    await ui.click(screen.getByRole('button', { name: 'Timer' }));
+    const idleSelectAfterArchive = await screen.findByLabelText('Projekt');
+    expect(within(idleSelectAfterArchive).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Kein Projekt',
+    ]);
+
+    // 5. The existing entry, and its per-project total, still show it suffixed "(archiviert)".
+    await ui.click(screen.getByRole('button', { name: 'Kalender' }));
+    await ui.click(await screen.findByRole('button', { name: /^Freitag, 16\. Oktober 2026/ }));
+    const archivedItem = (await screen.findByText(/^Arbeit 08:00 – 12:00/)).closest('li');
+    if (!archivedItem) throw new Error('list item missing');
+    expect(within(archivedItem).getByText('Kunde A (archiviert)')).toBeInTheDocument();
+    expect(projectTotalRows()).toEqual([['Kunde A (archiviert)', '4:00']]);
+
+    // 6. Editing that entry keeps the archived project selected and selectable (edge case 6, AC 6).
+    await ui.click(within(archivedItem).getByRole('button', { name: 'Bearbeiten' }));
+    const editForm = screen.getByRole('form', { name: 'Eintrag bearbeiten' });
+    const archivedProjectId = repo.getProjects('u1')[0].id;
+    expect(within(editForm).getByLabelText('Projekt')).toHaveValue(archivedProjectId);
+    expect(within(editForm).getByRole('option', { name: 'Kunde A (archiviert) · Blau' })).toBeInTheDocument();
+    await ui.click(within(editForm).getByRole('button', { name: 'Abbrechen' }));
+
+    // 7. Restore it; the idle Timer picker lists it again.
+    await ui.click(screen.getByRole('button', { name: 'Projekte' }));
+    await ui.click(
+      within(await waitFor(() => rowFor('Kunde A (archiviert)'))).getByRole('button', { name: 'Wiederherstellen' }),
+    );
+    await screen.findByText('Kunde A');
+
+    await ui.click(screen.getByRole('button', { name: 'Timer' }));
+    const idleSelectRestored = await screen.findByLabelText('Projekt');
+    expect(within(idleSelectRestored).getByRole('option', { name: 'Kunde A · Blau' })).toBeInTheDocument();
+  });
+
+  it('a full Timer session (start, carry-over on Weiter, "Projekt wechseln", end) adds up correctly in the day-detail per-project totals and the calendar day total', async () => {
+    vi.setSystemTime(new Date(2026, 9, 16, 8, 0));
+    const ui = userEvent.setup({ delay: null });
+    const repo = new InMemoryRepository();
+    renderSignedIn(repo);
+    await screen.findByText('Arbeitszeit');
+
+    await createProject(ui, 'Kunde A');
+    await createProject(ui, 'Kunde B');
+
+    await ui.click(screen.getByRole('button', { name: 'Timer' }));
+    await screen.findByText('Nicht gestartet');
+    await ui.selectOptions(screen.getByLabelText('Projekt'), screen.getByRole('option', { name: 'Kunde A · Blau' }));
+    await ui.click(screen.getByRole('button', { name: 'Start' }));
+    await screen.findByText('Arbeitet seit 08:00');
+
+    await ui.type(await screen.findByLabelText('Notiz'), 'Kickoff');
+    await ui.click(screen.getByRole('button', { name: 'Notiz speichern' }));
+
+    vi.setSystemTime(new Date(2026, 9, 16, 9, 0));
+    await ui.click(screen.getByRole('button', { name: 'Pause' }));
+    await screen.findByText('Pause seit 09:00');
+
+    vi.setSystemTime(new Date(2026, 9, 16, 9, 15));
+    const weiter = screen.getByRole('button', { name: 'Weiter' });
+    await waitFor(() => expect(weiter).toBeEnabled());
+    await ui.click(weiter);
+    await screen.findByText('Arbeitet seit 09:15');
+    // Weiter carried Kunde A, never the note (AC 11, edge case 23).
+    expect(screen.getByLabelText('Projekt')).toHaveValue(
+      repo.getProjects('u1').find((p) => p.name === 'Kunde A')!.id,
+    );
+    expect(screen.getByLabelText('Notiz')).toHaveValue('');
+
+    vi.setSystemTime(new Date(2026, 9, 16, 10, 0));
+    const switchSelect = screen.getByLabelText('Wechseln zu');
+    await ui.selectOptions(switchSelect, within(switchSelect).getByRole('option', { name: 'Kunde B · Grün' }));
+    await ui.click(screen.getByRole('button', { name: 'Projekt wechseln' }));
+    await screen.findByText('Arbeitet seit 10:00');
+    expect(screen.getByLabelText('Projekt')).toHaveValue(repo.getProjects('u1').find((p) => p.name === 'Kunde B')!.id);
+
+    vi.setSystemTime(new Date(2026, 9, 16, 10, 30));
+    await ui.click(screen.getByRole('button', { name: 'Arbeitstag beenden' }));
+    await screen.findByText('Nicht gestartet');
+
+    await ui.click(screen.getByRole('button', { name: 'Kalender' }));
+    await ui.click(await screen.findByRole('button', { name: /^Freitag, 16\. Oktober 2026/ }));
+
+    const firstItem = (await screen.findByText(/^Arbeit 08:00 – 09:00/)).closest('li');
+    if (!firstItem) throw new Error('list item missing');
+    expect(within(firstItem).getByText('Kickoff')).toBeInTheDocument();
+    expect(within(firstItem).getByText('Kunde A')).toBeInTheDocument();
+
+    // Per-project totals: 1h (08–09) + 45min (09:15–10:00) = 1:45 for Kunde A, 30min for Kunde B;
+    // the groups sum to "Gearbeitet", breaks (0:15) are excluded (AC 17, edge cases 31, 9).
+    expect(projectTotalRows()).toEqual([
+      ['Kunde A', '1:45'],
+      ['Kunde B', '0:30'],
+    ]);
+    expect(totalValue('Gearbeitet')).toHaveTextContent('2:15');
+    expect(totalValue('Pausen')).toHaveTextContent('0:15');
+
+    // The calendar's day total (not project-specific, out of scope for per-project totals) still
+    // reflects the same net work time once a project is involved.
+    await ui.click(screen.getByRole('button', { name: 'Zurück zum Kalender' }));
+    expect(await screen.findByRole('button', { name: /^Freitag, 16\. Oktober 2026/ })).toHaveAccessibleName(
+      /2:15 gearbeitet/,
+    );
   });
 });

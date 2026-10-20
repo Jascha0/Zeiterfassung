@@ -5,17 +5,63 @@ import { AuthProvider, useAuth } from './auth/AuthContext';
 import type { AuthUser } from './auth/authTypes';
 import { OnlineIndicator } from './components/OnlineIndicator';
 import { VerificationBanner } from './components/VerificationBanner';
+import { monthStartOf } from './domain/calendar';
 import { ThemeProvider } from './theme/ThemeContext';
 import { AccountView } from './views/AccountView';
+import { CalendarView } from './views/CalendarView';
+import { DayDetailView } from './views/DayDetailView';
 import { LoginView } from './views/LoginView';
+import { ProjectsView } from './views/ProjectsView';
+import { ResolveView } from './views/ResolveView';
 import { TimerView } from './views/TimerView';
 
-type View = 'timer' | 'account';
+type View =
+  | { name: 'timer' }
+  | { name: 'account' }
+  | { name: 'calendar'; monthStart: number }
+  | { name: 'day'; dayStart: number }
+  | { name: 'resolve' }
+  | { name: 'projects' };
+
+function renderView(view: View, user: AuthUser, setView: (view: View) => void): React.JSX.Element {
+  switch (view.name) {
+    case 'timer':
+      return <TimerView uid={user.uid} onResolveOpenEntries={() => setView({ name: 'resolve' })} />;
+    case 'account':
+      return <AccountView user={user} />;
+    case 'calendar':
+      return (
+        <CalendarView
+          uid={user.uid}
+          monthStart={view.monthStart}
+          onMonthChange={(monthStart) => setView({ name: 'calendar', monthStart })}
+          onOpenDay={(dayStart) => setView({ name: 'day', dayStart })}
+          email={user.email}
+        />
+      );
+    case 'day':
+      return (
+        <DayDetailView
+          key={view.dayStart}
+          uid={user.uid}
+          dayStart={view.dayStart}
+          onDayChange={(dayStart) => setView({ name: 'day', dayStart })}
+          onBack={() => setView({ name: 'calendar', monthStart: monthStartOf(view.dayStart) })}
+        />
+      );
+    case 'resolve':
+      return <ResolveView uid={user.uid} onBack={() => setView({ name: 'timer' })} />;
+    case 'projects':
+      return <ProjectsView uid={user.uid} />;
+  }
+}
 
 function Shell(props: { user: AuthUser }): React.JSX.Element {
   const { user } = props;
   const { redirectError, clearRedirectError } = useAuth();
-  const [view, setView] = useState<View>('timer');
+  const [view, setView] = useState<View>({ name: 'timer' });
+  const timerActive = view.name === 'timer' || view.name === 'resolve';
+  const calendarActive = view.name === 'calendar' || view.name === 'day';
 
   return (
     <div className="shell">
@@ -25,15 +71,29 @@ function Shell(props: { user: AuthUser }): React.JSX.Element {
         <nav aria-label="Hauptnavigation" className="main-nav">
           <button
             type="button"
-            aria-current={view === 'timer' ? 'page' : undefined}
-            onClick={() => setView('timer')}
+            aria-current={timerActive ? 'page' : undefined}
+            onClick={() => setView({ name: 'timer' })}
           >
             Timer
           </button>
           <button
             type="button"
-            aria-current={view === 'account' ? 'page' : undefined}
-            onClick={() => setView('account')}
+            aria-current={calendarActive ? 'page' : undefined}
+            onClick={() => setView({ name: 'calendar', monthStart: monthStartOf(Date.now()) })}
+          >
+            Kalender
+          </button>
+          <button
+            type="button"
+            aria-current={view.name === 'projects' ? 'page' : undefined}
+            onClick={() => setView({ name: 'projects' })}
+          >
+            Projekte
+          </button>
+          <button
+            type="button"
+            aria-current={view.name === 'account' ? 'page' : undefined}
+            onClick={() => setView({ name: 'account' })}
           >
             Konto
           </button>
@@ -48,7 +108,7 @@ function Shell(props: { user: AuthUser }): React.JSX.Element {
         </div>
       )}
       <VerificationBanner user={user} />
-      {view === 'timer' ? <TimerView uid={user.uid} /> : <AccountView user={user} />}
+      {renderView(view, user, setView)}
     </div>
   );
 }
