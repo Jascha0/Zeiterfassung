@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.web.zeittrackerrichtig.twa",
+      "sha256_cert_fingerprints": [
+        "B6:1D:85:52:41:1F:97:9C:E0:40:E4:5A:A7:85:E6:95:1D:48:E1:E1:CC:3A:34:B5:A0:FA:AE:01:D5:C3:63:7C"
+      ]
+    }
+  }
+]
